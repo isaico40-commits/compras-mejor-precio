@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { pesos } from "@/lib/formato";
+import { pesos, filtroBusqueda } from "@/lib/formato";
 import { agregarItem, quitarItem } from "@/app/actions";
 
 type Mejor = {
@@ -13,14 +13,19 @@ type TotalSuper = {
   total: number | null; items_con_precio: number; items_totales: number;
 };
 
-export default async function ListaPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ListaPage({
+  params, searchParams,
+}: { params: Promise<{ id: string }>; searchParams: Promise<{ q?: string }> }) {
   const { id } = await params;
+  const q = ((await searchParams).q ?? "").trim();
   const supabase = await createClient();
 
   const [{ data: lista }, { data: items }, { data: productos }, { data: mejores }, { data: totales }] = await Promise.all([
     supabase.from("listas").select("id, nombre").eq("id", id).maybeSingle(),
     supabase.from("lista_items").select("id, cantidad, frecuencia_dias, productos(id, nombre, marca, cantidad, unidad)").eq("lista_id", id).order("created_at"),
-    supabase.from("productos").select("id, nombre, marca, cantidad, unidad").order("nombre"),
+    q
+      ? supabase.from("productos").select("id, nombre, marca, cantidad, unidad").or(filtroBusqueda(q)).order("nombre").limit(30)
+      : Promise.resolve({ data: [] as { id: string; nombre: string; marca: string | null; cantidad: number | null; unidad: string | null }[] }),
     supabase.rpc("mejor_precio_por_item", { p_lista_id: id }),
     supabase.rpc("total_lista_por_super", { p_lista_id: id }),
   ]);
@@ -138,16 +143,27 @@ export default async function ListaPage({ params }: { params: Promise<{ id: stri
           {!items?.length && <li className="p-3 text-neutral-500">Agregá los productos que comprás seguido.</li>}
         </ul>
 
-        <form action={agregarItem} className="flex flex-wrap gap-2">
-          <input type="hidden" name="lista_id" value={id} />
-          <select name="producto_id" required className="min-w-48 flex-1 rounded border p-2">
-            <option value="">Elegí un producto</option>
-            {productos?.map((p) => <option key={p.id} value={p.id}>{desc(p)}</option>)}
-          </select>
-          <input name="cantidad" type="number" step="any" min="0.01" defaultValue={1} className="w-20 rounded border p-2" title="Cantidad" />
-          <input name="frecuencia_dias" type="number" min="1" placeholder="Cada X días" className="w-32 rounded border p-2" />
-          <button className="rounded bg-emerald-600 px-4 font-semibold text-white">Agregar</button>
+        <form className="flex gap-2">
+          <input name="q" defaultValue={q} placeholder="Buscar producto, marca o código de barras" className="flex-1 rounded border p-2" />
+          <button className="rounded border px-4 font-semibold">Buscar</button>
         </form>
+        {q && (
+          <ul className="divide-y rounded border bg-white text-sm">
+            {productos?.map((p) => (
+              <li key={p.id}>
+                <form action={agregarItem} className="flex flex-wrap items-center gap-2 p-2">
+                  <input type="hidden" name="lista_id" value={id} />
+                  <input type="hidden" name="producto_id" value={p.id} />
+                  <span className="min-w-48 flex-1">{desc(p)}</span>
+                  <input name="cantidad" type="number" step="any" min="0.01" defaultValue={1} className="w-16 rounded border p-1" title="Cantidad" />
+                  <input name="frecuencia_dias" type="number" min="1" placeholder="Cada X días" className="w-28 rounded border p-1" />
+                  <button className="rounded bg-emerald-600 px-3 py-1 font-semibold text-white">Agregar</button>
+                </form>
+              </li>
+            ))}
+            {!productos?.length && <li className="p-3 text-neutral-500">No encontré “{q}”. Podés crearlo en Productos.</li>}
+          </ul>
+        )}
       </section>
     </main>
   );

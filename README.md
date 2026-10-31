@@ -32,8 +32,21 @@ El esquema está en `supabase/migrations/`. Tablas:
 - Vista `precios_actuales`: último precio de cada producto en cada súper.
 - `mejor_precio_por_item(lista)` y `total_lista_por_super(lista)`: la comparación que muestra la app.
 
-## Fuentes de precios (próximos pasos)
+## Precios automáticos (Precios Claros / SEPA)
 
-1. Carga manual (ya funciona).
-2. Foto del ticket → OCR → precios (`fuente = 'ticket'`).
-3. Precios Claros (SEPA): datasets públicos con precios por sucursal y EAN.
+`.github/workflows/precios-claros.yml` corre todos los días a las 10:23 (hora argentina):
+
+1. Descarga el ZIP del día del dataset [SEPA](https://datos.produccion.gob.ar/dataset/sepa-precios).
+2. Se queda con las sucursales de Mar del Plata / General Pueyrredón.
+3. Toma el precio más bajo de cada producto (por código de barras) en cada cadena.
+4. Lo carga con `sepa_cargar`: si el precio no cambió, actualiza la fecha; si cambió, guarda un registro nuevo (queda el historial).
+
+Necesita el secret `SUPABASE_SERVICE_ROLE_KEY` en el repo. Se puede correr a mano desde la pestaña Actions → "Importar Precios Claros" → Run workflow.
+
+## Publicar (Vercel)
+
+Importar el repo en Vercel con las variables `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Cada push a `main` se publica solo. En Supabase → Authentication → URL Configuration, poner la URL de Vercel como Site URL.
+
+## Pendiente
+
+- Foto del ticket → OCR → precios (`fuente = 'ticket'`).

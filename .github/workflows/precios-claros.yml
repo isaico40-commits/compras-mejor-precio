@@ -1,0 +1,30 @@
+name: Importar Precios Claros
+
+on:
+  schedule:
+    - cron: "23 13 * * *"   # todos los días 10:23 de Argentina
+  workflow_dispatch:
+    inputs:
+      fecha:
+        description: "Fecha de los precios (AAAA-MM-DD). Vacío = hoy"
+        required: false
+
+jobs:
+  importar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Importar precios de Mar del Plata
+        env:
+          SUPABASE_URL: https://uwtqsfsnpbubwnjxvgex.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -n "${{ github.event.inputs.fecha }}" ]; then
+            python scripts/importar_sepa.py --fecha "${{ github.event.inputs.fecha }}"
+          else
+            python scripts/importar_sepa.py
+          fi

@@ -1,11 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import { cargarPrecio } from "@/app/actions";
-import { pesos } from "@/lib/formato";
+import { pesos, filtroBusqueda } from "@/lib/formato";
 
-export default async function PreciosPage() {
+export default async function PreciosPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const q = ((await searchParams).q ?? "").trim();
   const supabase = await createClient();
   const [{ data: productos }, { data: supers }, { data: ultimos }] = await Promise.all([
-    supabase.from("productos").select("id, nombre, marca").order("nombre"),
+    q
+      ? supabase.from("productos").select("id, nombre, marca").or(filtroBusqueda(q)).order("nombre").limit(50)
+      : Promise.resolve({ data: [] as { id: string; nombre: string; marca: string | null }[] }),
     supabase.from("supermercados").select("id, nombre").order("nombre"),
     supabase.from("precios")
       .select("id, precio, precio_promo, promo_detalle, fecha, productos(nombre), supermercados(nombre)")
@@ -16,9 +19,13 @@ export default async function PreciosPage() {
   return (
     <main className="mx-auto max-w-2xl space-y-6 p-6">
       <h1 className="text-2xl font-bold">Cargar precio</h1>
+      <form className="flex gap-2">
+        <input name="q" defaultValue={q} placeholder="Primero buscá el producto" className="flex-1 rounded border p-2" />
+        <button className="rounded border px-4 font-semibold">Buscar</button>
+      </form>
       <form action={cargarPrecio} className="grid grid-cols-2 gap-2 rounded border bg-white p-4">
         <select name="producto_id" required className="col-span-2 rounded border p-2">
-          <option value="">Producto</option>
+          <option value="">{q ? `Producto (${productos?.length ?? 0} resultados)` : "Buscá un producto arriba"}</option>
           {productos?.map((p) => <option key={p.id} value={p.id}>{p.nombre}{p.marca ? ` · ${p.marca}` : ""}</option>)}
         </select>
         <select name="supermercado_id" required className="col-span-2 rounded border p-2">

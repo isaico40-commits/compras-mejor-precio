@@ -1,9 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { crearProducto } from "@/app/actions";
+import { filtroBusqueda } from "@/lib/formato";
 
-export default async function ProductosPage() {
+export default async function ProductosPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const q = ((await searchParams).q ?? "").trim();
   const supabase = await createClient();
-  const { data: productos } = await supabase.from("productos").select("*").order("nombre");
+  let consulta = supabase.from("productos").select("*").order("nombre").limit(50);
+  if (q) consulta = consulta.or(filtroBusqueda(q));
+  const { data: productos } = await consulta;
 
   return (
     <main className="mx-auto max-w-2xl space-y-6 p-6">
@@ -19,6 +23,10 @@ export default async function ProductosPage() {
         </select>
         <input name="ean" placeholder="Código de barras (opcional)" className="col-span-2 rounded border p-2" />
         <button className="col-span-2 rounded bg-emerald-600 p-2 font-semibold text-white">Agregar producto</button>
+      </form>
+      <form className="flex gap-2">
+        <input name="q" defaultValue={q} placeholder="Buscar producto, marca o código de barras" className="flex-1 rounded border p-2" />
+        <button className="rounded border px-4 font-semibold">Buscar</button>
       </form>
       <ul className="divide-y rounded border bg-white text-sm">
         {productos?.map((p) => (
