@@ -62,14 +62,16 @@ def http_get(url: str) -> bytes:
         return r.read()
 
 
-def url_del_dia(fecha: dt.date) -> str:
+def links_por_dia() -> dict[str, str]:
     html = http_get(DATASET_URL).decode("utf-8", "ignore")
     links = set(re.findall(r'https?://[^"\']+/download/sepa_[a-z]+\.zip', html))
-    dia = DIAS[fecha.weekday()]
-    for link in links:
-        if link.endswith(f"sepa_{dia}.zip"):
-            return link
-    raise SystemExit(f"No encontré el ZIP de {dia} en {DATASET_URL} (links: {sorted(links)})")
+    return {re.search(r"sepa_([a-z]+)\.zip$", l).group(1): l for l in links}
+
+
+def fecha_del_zip(ruta: str) -> dt.date | None:
+    """Los ZIPs internos se llaman ...AAAA-MM-DD_hh-mm-ss.zip: esa es la fecha real de los precios."""
+    fechas = re.findall(r"(\d{4}-\d{2}-\d{2})", " ".join(zipfile.ZipFile(ruta).namelist()))
+    return dt.date.fromisoformat(max(fechas)) if fechas else None
 
 
 def descargar(url: str, destino: str) -> None:
@@ -184,10 +186,30 @@ def main() -> None:
 
     ruta = a.zip
     if not ruta:
-        url = url_del_dia(fecha)
-        ruta = os.path.join(tempfile.mkdtemp(), "sepa.zip")
-        print(f"Descargando {url}", flush=True)
-        descargar(url, ruta)
+        # Cada día de la semana tiene su archivo y se pisa una vez por semana:
+        # busco el más reciente probando hoy, ayer y anteayer.
+        links = links_por_dia()
+        mejor: tuple[dt.date, str] | None = None
+        for atras in range(3):
+            d = fecha - dt.timedelta(days=atras)
+            url = links.get(DIAS[d.weekday()])
+            if not url:
+                continue
+            destino = os.path.join(tempfile.mkdtemp(), "sepa.zip")
+            print(f"Descargando {url}", flush=True)
+            descargar(url, destino)
+            f_zip = fecha_del_zip(destino) or d
+            print(f"  precios del {f_zip}", flush=True)
+            if not mejor or f_zip > mejor[0]:
+                mejor = (f_zip, destino)
+            if f_zip >= d:
+                break
+        if not mejor:
+            raise SystemExit(f"No encontré archivos en {DATASET_URL}")
+        fecha, ruta = mejor
+    elif not a.fecha:
+        fecha = fecha_del_zip(ruta) or fecha
+    print(f"Fecha de los precios: {fecha}", flush=True)
 
     filas = procesar(ruta)
     print(f"{len(filas)} productos con precio en Mar del Plata")
