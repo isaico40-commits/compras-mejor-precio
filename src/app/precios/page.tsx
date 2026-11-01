@@ -4,12 +4,13 @@ import { guardarPrecioNuevo, salir } from "@/app/actions";
 import { pesos, presentacion, filtroBusqueda } from "@/lib/formato";
 import { Encabezado, Tarjeta, inputCls, btnCls, btnSecCls } from "@/components/ui";
 import { CamposMedida, CamposPrecio } from "@/components/FormPrecio";
+import { armarLista } from "@/lib/lista";
 
 type Prod = { id: string; nombre: string; marca: string | null; dim: string | null; cant_base: number | null };
 
 export default async function PreciosPage({
   searchParams,
-}: { searchParams: Promise<{ q?: string; ok?: string; producto?: string; nuevo?: string; s?: string }> }) {
+}: { searchParams: Promise<{ q?: string; ok?: string; producto?: string; nuevo?: string; s?: string; item?: string; texto?: string; ver?: string }> }) {
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const supabase = await createClient();
@@ -23,7 +24,7 @@ export default async function PreciosPage({
     .order("fecha", { ascending: false }).order("created_at", { ascending: false }).limit(200);
   if (sp.s) mios = mios.eq("supermercado_id", sp.s);
 
-  const [{ data: supers }, { data: resultados }, { data: elegido }, { data: cargados }] = await Promise.all([
+  const [{ data: supers }, { data: resultados }, { data: elegido }, { data: cargados }, lista] = await Promise.all([
     supabase.from("supermercados").select("id, nombre").order("nombre"),
     q
       ? supabase.from("productos").select("id, nombre, marca, dim, cant_base").or(filtroBusqueda(q)).order("nombre").limit(20)
@@ -32,7 +33,14 @@ export default async function PreciosPage({
       ? supabase.from("productos").select("id, nombre, marca, dim, cant_base").eq("id", sp.producto).maybeSingle()
       : Promise.resolve({ data: null as Prod | null }),
     mios,
+    sp.ver === "lista" ? armarLista(supabase).catch(() => null) : Promise.resolve(null),
   ]);
+  const deItem = sp.item ? (
+    <>
+      <input type="hidden" name="item" value={sp.item} />
+      {sp.texto && <input type="hidden" name="texto" value={sp.texto} />}
+    </>
+  ) : null;
   const formAbierto = !!elegido || sp.nuevo !== undefined;
 
   return (
@@ -73,6 +81,8 @@ export default async function PreciosPage({
         {formAbierto && (
           <Tarjeta className="p-4">
             <form action={guardarPrecioNuevo} className="space-y-3">
+              {deItem}
+              {sp.item && <p className="rounded-lg bg-marca-suave px-3 py-2 text-sm text-marca">Queda fijado en tu lista con este precio y este lugar.</p>}
               {elegido ? (
                 <>
                   <input type="hidden" name="producto_id" value={elegido.id} />
@@ -97,7 +107,43 @@ export default async function PreciosPage({
           </Tarjeta>
         )}
 
-        <section>
+        <div className="grid grid-cols-2 gap-1 rounded-xl bg-linea/60 p-1 text-sm font-semibold">
+          <Link href="/precios" className={`rounded-lg py-2 text-center ${sp.ver !== "lista" ? "bg-tarjeta shadow-sm" : "text-suave"}`}>Cargados por vos</Link>
+          <Link href="/precios?ver=lista" className={`rounded-lg py-2 text-center ${sp.ver === "lista" ? "bg-tarjeta shadow-sm" : "text-suave"}`}>Tu lista</Link>
+        </div>
+
+        {sp.ver === "lista" && (
+          <section>
+            <p className="mb-2 px-1 text-sm text-suave">Todo lo de tu lista y de la caja de Setto. Tocá uno para cargar tu precio y el lugar donde lo comprás.</p>
+            <ul className="divide-y divide-linea overflow-hidden rounded-2xl border border-linea bg-tarjeta">
+              {lista?.entradas.map((e) => {
+                const r = e.recomendado;
+                const href = `/precios?nuevo=${encodeURIComponent(e.titulo)}&item=${e.origen}:${e.itemId}${e.origen === "setto" ? `&texto=${encodeURIComponent(e.texto ?? "")}` : ""}`;
+                return (
+                  <li key={e.key}>
+                    <Link href={href} className="flex items-center justify-between gap-3 px-4 py-3 active:bg-fondo">
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{e.titulo}{e.origen === "setto" && <span className="ml-1.5 rounded bg-fondo px-1 text-[10px] font-bold text-suave">S</span>}</span>
+                        <span className="text-sm text-suave">
+                          {e.lugar ? `Lo comprás en ${e.lugar.nombre}` : r ? `Más barato en ${r.super}` : e.analizando ? "Analizando…" : "Sin precio"}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        {r?.precio != null && (!e.lugar || e.lugar.id === r.superId)
+                          ? <span className="num font-semibold">{pesos(r.precio)}</span>
+                          : <span className="text-sm font-semibold text-marca">Cargar</span>}
+                        <svg viewBox="0 0 24 24" className="h-4 w-4 text-suave" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" /></svg>
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+              {!lista?.entradas.length && <li className="px-4 py-6 text-center text-sm text-suave">Tu lista está vacía.</li>}
+            </ul>
+          </section>
+        )}
+
+        {sp.ver !== "lista" && <section>
           <div className="mb-2 flex items-center justify-between px-1">
             <h2 className="font-bold">Precios cargados</h2>
             <form>
@@ -132,7 +178,7 @@ export default async function PreciosPage({
             {!cargados?.length && <li className="px-4 py-6 text-center text-sm text-suave">Todavía no cargaste precios.</li>}
           </ul>
           <p className="mt-2 px-1 text-xs text-suave">Los precios de los súpers grandes se actualizan solos todos los días desde Precios Claros.</p>
-        </section>
+        </section>}
       </div>
     </main>
   );

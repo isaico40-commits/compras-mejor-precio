@@ -7,6 +7,19 @@ import { createClient } from "@/lib/supabase/server";
 const num = (v: FormDataEntryValue | null) => (v === null || v === "" ? null : Number(v));
 const txt = (v: FormDataEntryValue | null) => (v === null || v === "" ? null : String(v).trim());
 
+/** Lugar elegido en un formulario: uno de la lista o uno nuevo escrito a mano (se crea si no existe). */
+async function resolverLugar(supabase: Awaited<ReturnType<typeof createClient>>, form: FormData, campo = "supermercado_id") {
+  const nuevo = txt(form.get("nuevo_lugar"))?.replace(/\s+/g, " ");
+  if (nuevo) {
+    const { data: existe } = await supabase.from("supermercados").select("id").ilike("nombre", nuevo).limit(1).maybeSingle();
+    if (existe) return existe.id as string;
+    const { data, error } = await supabase.from("supermercados").insert({ nombre: nuevo }).select("id").single();
+    if (error) throw new Error(error.message);
+    return data.id as string;
+  }
+  return txt(form.get(campo));
+}
+
 export async function crearLista(form: FormData) {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -158,7 +171,7 @@ export async function guardarItem(form: FormData) {
   }
   if (form.has("cantidad")) cambios.cantidad = num(form.get("cantidad")) ?? 1;
   if (form.has("frecuencia_dias")) cambios.frecuencia_dias = num(form.get("frecuencia_dias"));
-  if (form.has("lugar_id")) cambios.lugar_id = txt(form.get("lugar_id"));
+  if (form.has("lugar_id") || form.has("nuevo_lugar")) cambios.lugar_id = await resolverLugar(supabase, form, "lugar_id");
   if (form.has("producto_id")) cambios.producto_id = txt(form.get("producto_id"));
   const { error } = await supabase.from("lista_items").update(cambios).eq("id", id);
   if (error) throw new Error(error.message);
@@ -178,7 +191,7 @@ export async function borrarItem(form: FormData) {
 export async function guardarSetto(form: FormData) {
   const supabase = await createClient();
   const texto = String(form.get("texto"));
-  const { data: actual } = await supabase.from("alias_productos").select("termino, producto_id, nombre").eq("texto", texto).maybeSingle();
+  const { data: actual } = await supabase.from("alias_productos").select("termino, producto_id, nombre, lugar_id").eq("texto", texto).maybeSingle();
   const nombre = form.has("nombre") ? txt(form.get("nombre")) : actual?.nombre ?? null;
   const fila = {
     texto,
@@ -187,6 +200,7 @@ export async function guardarSetto(form: FormData) {
       ? nombre.toLowerCase()
       : form.has("termino") ? txt(form.get("termino"))?.toLowerCase() ?? null : actual?.termino ?? null,
     producto_id: form.has("producto_id") ? txt(form.get("producto_id")) : actual?.producto_id ?? null,
+    lugar_id: form.has("lugar_id") || form.has("nuevo_lugar") ? await resolverLugar(supabase, form, "lugar_id") : actual?.lugar_id ?? null,
   };
   const { error } = await supabase.from("alias_productos").upsert(fila, { onConflict: "user_id,texto" });
   if (error) throw new Error(error.message);
@@ -229,15 +243,32 @@ export async function guardarPrecioNuevo(form: FormData) {
       productoId = nuevo.id;
     }
   }
+  const superId = await resolverLugar(supabase, form);
+  if (!superId) throw new Error("Elegí o escribí dónde lo comprás");
   const { error } = await supabase.from("precios").insert({
     producto_id: productoId,
-    supermercado_id: String(form.get("supermercado_id")),
+    supermercado_id: superId,
     precio: num(form.get("precio")),
     precio_promo: num(form.get("precio_promo")),
     promo_detalle: txt(form.get("promo_detalle")),
     fecha: txt(form.get("fecha")) ?? undefined,
   });
   if (error) throw new Error(error.message);
+
+  // Si se cargó desde un ítem de la lista: queda fijado a este producto y a este lugar
+  const [origen, itemId] = String(form.get("item") ?? "").split(":");
+  if (origen === "mio" && itemId) {
+    await supabase.from("lista_items").update({ producto_id: productoId, lugar_id: superId }).eq("id", itemId);
+  } else if (origen === "setto" && itemId) {
+    const texto = txt(form.get("texto"));
+    if (texto) {
+      const { data: actual } = await supabase.from("alias_productos").select("nombre, termino").eq("texto", texto).maybeSingle();
+      await supabase.from("alias_productos").upsert(
+        { texto, producto_id: productoId, lugar_id: superId, nombre: actual?.nombre ?? null, termino: actual?.termino ?? null },
+        { onConflict: "user_id,texto" },
+      );
+    }
+  }
   revalidatePath("/precios");
   revalidatePath("/");
   redirect("/precios?ok=1");
@@ -246,8 +277,10 @@ export async function guardarPrecioNuevo(form: FormData) {
 export async function editarPrecio(form: FormData) {
   const supabase = await createClient();
   const id = String(form.get("id"));
+  const superId = await resolverLugar(supabase, form);
+  if (!superId) throw new Error("Elegí o escribí dónde lo comprás");
   const { error } = await supabase.from("precios").update({
-    supermercado_id: String(form.get("supermercado_id")),
+    supermercado_id: superId,
     precio: num(form.get("precio")),
     precio_promo: num(form.get("precio_promo")),
     promo_detalle: txt(form.get("promo_detalle")),

@@ -13,6 +13,7 @@ type Analisis = { dim: string | null; n: number; mediana: number | null; chica: 
 
 export type Entrada = {
   key: string;
+  texto?: string;   // clave del alias (ítems de Setto)
   origen: "mio" | "setto";
   itemId: string;
   titulo: string;
@@ -74,7 +75,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
   for (const s of settoRes.data ?? []) {
     const a = s.alias;
     entradas.push({
-      ...base, key: `setto-${s.id}`, origen: "setto", itemId: s.id,
+      ...base, key: `setto-${s.id}`, texto: s.texto, origen: "setto", itemId: s.id,
       titulo: a?.nombreItem || s.item, cantidad: 1, cantidadTexto: s.cantidad, urgente: !!s.urgente,
       termino: a?.termino || a?.nombreItem?.toLowerCase() || (a?.nombre ? dosPalabras(a.nombre.toLowerCase()) : s.busqueda),
       dim: a?.dim ?? null,

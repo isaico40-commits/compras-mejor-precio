@@ -48,11 +48,12 @@ export function CamposPrecio({
   return (
     <>
       <label className="block text-sm font-semibold">Dónde
-        <select name="supermercado_id" required defaultValue={superId ?? ""} className={`${inputCls} mt-1`}>
-          <option value="">Elegí el súper</option>
+        <select name="supermercado_id" defaultValue={superId ?? ""} className={`${inputCls} mt-1`}>
+          <option value="">Elegí el lugar</option>
           {supers.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
         </select>
       </label>
+      <NuevoLugar />
       <div className="grid grid-cols-2 gap-2">
         <label className="text-sm font-semibold">Precio
           <input name="precio" type="number" inputMode="decimal" step="0.01" min="0.01" required defaultValue={precio ?? ""} placeholder="$" className={`${inputCls} mt-1`} />
@@ -66,5 +67,12 @@ export function CamposPrecio({
         <input name="fecha" type="date" defaultValue={fecha} className={inputCls} />
       </div>
     </>
+  );
+}
+
+/** Campo para escribir un lugar que no está en la lista (papelera, almacén, etc.). Si se completa, manda sobre el selector. */
+export function NuevoLugar() {
+  return (
+    <input name="nuevo_lugar" placeholder="¿No está? Escribí el lugar (ej: Papelera Roland)" className={inputCls} />
   );
 }

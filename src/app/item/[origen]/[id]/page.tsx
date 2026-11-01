@@ -6,6 +6,7 @@ import { pesos, porUnidad, presentacion } from "@/lib/formato";
 import { guardarItem, borrarItem, guardarSetto } from "@/app/actions";
 import { Encabezado, Pill, Tarjeta, inputCls, btnCls, btnSecCls } from "@/components/ui";
 import type { Opcion } from "@/lib/lista";
+import { NuevoLugar } from "@/components/FormPrecio";
 
 export default async function ItemPage({ params }: { params: Promise<{ origen: string; id: string }> }) {
   const { origen, id } = await params;
@@ -13,7 +14,7 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
   const esMio = origen === "mio";
 
   let titulo = "", termino = "", dim: string | null = null, productoId: string | null = null, productoNombre: string | null = null;
-  let cantidad = 1, frecuencia: number | null = null, lugarId: string | null = null, texto = "", donde: string | null = null;
+  let cantidad = 1, frecuencia: number | null = null, lugarId: string | null = null, texto = "", donde: string | null = null, lugarSetto: string | null = null;
 
   if (esMio) {
     const { data: i } = await supabase
@@ -30,7 +31,7 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
     const pend = await pendientesConAlias(supabase);
     const s = pend?.find((x) => x.id === id);
     if (!s) notFound();
-    titulo = s.alias?.nombreItem || s.item; texto = s.texto; donde = s.lugar?.nombre ?? s.donde;
+    titulo = s.alias?.nombreItem || s.item; texto = s.texto; donde = s.lugar?.nombre ?? s.donde; lugarSetto = s.lugar?.id ?? null;
     termino = s.alias?.termino || (s.alias?.nombreItem?.toLowerCase() ?? "") || s.busqueda || limpiarItem(s.item);
     dim = s.alias?.dim ?? null; productoId = s.alias?.producto_id ?? null; productoNombre = s.alias?.nombre ?? null;
   }
@@ -78,6 +79,17 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
             <p className="text-xs text-suave">Usá palabras genéricas: “azucar comun”, “leche entera”, “crema de leche”.</p>
           </form>
         </Tarjeta>
+
+        <Link
+          href={`/precios?nuevo=${encodeURIComponent(titulo)}&item=${origen}:${id}${texto ? `&texto=${encodeURIComponent(texto)}` : ""}`}
+          className="flex items-center justify-between rounded-2xl border border-linea bg-tarjeta px-4 py-3 active:bg-fondo"
+        >
+          <span>
+            <span className="block font-semibold">Cargar mi precio</span>
+            <span className="text-sm text-suave">Si lo comprás en un lugar que no está (papelera, almacén…)</span>
+          </span>
+          <svg viewBox="0 0 24 24" className="h-4 w-4 text-suave" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" /></svg>
+        </Link>
 
         <section>
           <h2 className="mb-2 px-1 font-bold">Opciones más baratas por {dim === "l" ? "litro" : dim === "u" ? "unidad" : "kilo"}</h2>
@@ -137,11 +149,28 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
                   {lugares?.map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
                 </select>
               </label>
+              <NuevoLugar />
               <button className={`${btnCls} w-full`}>Guardar</button>
             </form>
             <form action={borrarItem} className="mt-3">
               <input type="hidden" name="id" value={id} />
               <button className="w-full py-2 text-sm font-semibold text-red-600">Quitar de la lista</button>
+            </form>
+          </Tarjeta>
+        )}
+        {!esMio && (
+          <Tarjeta className="p-4">
+            <form action={guardarSetto} className="space-y-3">
+              {ocultos}
+              <input type="hidden" name="volver" value="1" />
+              <label className="block text-sm font-semibold">Dónde lo comprás
+                <select name="lugar_id" defaultValue={lugarSetto ?? ""} className={`${inputCls} mt-1`}>
+                  <option value="">Donde esté más barato</option>
+                  {lugares?.map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
+                </select>
+              </label>
+              <NuevoLugar />
+              <button className={`${btnCls} w-full`}>Guardar</button>
             </form>
           </Tarjeta>
         )}
