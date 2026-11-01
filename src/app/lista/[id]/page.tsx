@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { pesos, filtroBusqueda } from "@/lib/formato";
-import { agregarItem, quitarItem } from "@/app/actions";
+import { agregarItem, quitarItem, cambiarLugar } from "@/app/actions";
 
 type Mejor = {
   producto_id: string; producto: string; cantidad: number;
@@ -20,14 +20,15 @@ export default async function ListaPage({
   const q = ((await searchParams).q ?? "").trim();
   const supabase = await createClient();
 
-  const [{ data: lista }, { data: items }, { data: productos }, { data: mejores }, { data: totales }] = await Promise.all([
+  const [{ data: lista }, { data: items }, { data: productos }, { data: mejores }, { data: totales }, { data: lugares }] = await Promise.all([
     supabase.from("listas").select("id, nombre").eq("id", id).maybeSingle(),
-    supabase.from("lista_items").select("id, cantidad, frecuencia_dias, productos(id, nombre, marca, cantidad, unidad)").eq("lista_id", id).order("created_at"),
+    supabase.from("lista_items").select("id, cantidad, frecuencia_dias, lugar_id, productos(id, nombre, marca, cantidad, unidad)").eq("lista_id", id).order("created_at"),
     q
       ? supabase.from("productos").select("id, nombre, marca, cantidad, unidad").or(filtroBusqueda(q)).order("nombre").limit(30)
       : Promise.resolve({ data: [] as { id: string; nombre: string; marca: string | null; cantidad: number | null; unidad: string | null }[] }),
     supabase.rpc("mejor_precio_por_item", { p_lista_id: id }),
     supabase.rpc("total_lista_por_super", { p_lista_id: id }),
+    supabase.from("supermercados").select("id, nombre").order("nombre"),
   ]);
   if (!lista) notFound();
 
@@ -132,6 +133,15 @@ export default async function ListaPage({
                     {i.frecuencia_dias ? ` · cada ${i.frecuencia_dias} días` : ""}
                   </p>
                 </div>
+                <form action={cambiarLugar} className="flex items-center gap-1">
+                  <input type="hidden" name="id" value={i.id} />
+                  <input type="hidden" name="lista_id" value={id} />
+                  <select name="lugar_id" defaultValue={i.lugar_id ?? ""} className="max-w-32 rounded border p-1 text-xs" title="Dónde lo comprás">
+                    <option value="">Dónde: cualquiera</option>
+                    {lugares?.map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
+                  </select>
+                  <button className="rounded border px-2 py-1 text-xs">OK</button>
+                </form>
                 <form action={quitarItem}>
                   <input type="hidden" name="id" value={i.id} />
                   <input type="hidden" name="lista_id" value={id} />
@@ -157,6 +167,10 @@ export default async function ListaPage({
                   <span className="min-w-48 flex-1">{desc(p)}</span>
                   <input name="cantidad" type="number" step="any" min="0.01" defaultValue={1} className="w-16 rounded border p-1" title="Cantidad" />
                   <input name="frecuencia_dias" type="number" min="1" placeholder="Cada X días" className="w-28 rounded border p-1" />
+                  <select name="lugar_id" defaultValue="" className="w-32 rounded border p-1" title="Dónde lo comprás">
+                    <option value="">Dónde: cualquiera</option>
+                    {lugares?.map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
+                  </select>
                   <button className="rounded bg-emerald-600 px-3 py-1 font-semibold text-white">Agregar</button>
                 </form>
               </li>

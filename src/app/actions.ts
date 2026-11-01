@@ -27,6 +27,7 @@ export async function agregarItem(form: FormData) {
       producto_id: String(form.get("producto_id")),
       cantidad: num(form.get("cantidad")) ?? 1,
       frecuencia_dias: num(form.get("frecuencia_dias")),
+      lugar_id: txt(form.get("lugar_id")),
     },
     { onConflict: "lista_id,producto_id" },
   );
@@ -102,5 +103,13 @@ export async function desvincularAlias(form: FormData) {
   const supabase = await createClient();
   await supabase.from("alias_productos").delete().eq("texto", String(form.get("texto")));
   revalidatePath("/setto");
+  revalidatePath("/super");
+}
+
+export async function cambiarLugar(form: FormData) {
+  const listaId = String(form.get("lista_id"));
+  const supabase = await createClient();
+  await supabase.from("lista_items").update({ lugar_id: txt(form.get("lugar_id")) }).eq("id", String(form.get("id")));
+  revalidatePath(`/lista/${listaId}`);
   revalidatePath("/super");
 }

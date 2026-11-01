@@ -9,6 +9,7 @@ type Fila = {
   frecuencia_dias: number | null; ultima_compra: string | null; toca: boolean;
   precio_aca: number | null; promo_aca: string | null; fecha_aca: string | null;
   mejor_precio: number | null; mejor_super: string | null; mejor_fecha: string | null;
+  lugar_id?: string | null; lugar?: string | null;
 };
 
 export default async function SuperPage({
@@ -28,6 +29,14 @@ export default async function SuperPage({
   if (listaId && superId) {
     const { data } = await supabase.rpc("comparar_en_super", { p_lista_id: listaId, p_super_id: superId });
     filas = (data as Fila[] | null) ?? [];
+    // Lugar elegido para cada ítem (dónde lo pensás comprar)
+    const { data: lugares } = await supabase
+      .from("lista_items").select("id, lugar_id, supermercados(nombre)").eq("lista_id", listaId);
+    const porItem = new Map((lugares ?? []).map((l) => [l.id, l]));
+    filas = filas.map((f) => {
+      const l = porItem.get(f.item_id);
+      return { ...f, lugar_id: l?.lugar_id ?? null, lugar: (l?.supermercados as unknown as { nombre: string } | null)?.nombre ?? null };
+    });
   }
   // Lista de compras de la caja de Setto (solo lectura)
   let setto: PendienteConProducto[] | null = null;
@@ -47,10 +56,11 @@ export default async function SuperPage({
 
   const visibles = verTodos ? filas : filas.filter((f) => f.toca);
   const conviene = (f: Fila) =>
-    f.precio_aca != null && (f.mejor_precio == null || Number(f.precio_aca) <= Number(f.mejor_precio));
+    f.lugar_id === superId ||
+    (f.precio_aca != null && (f.mejor_precio == null || Number(f.precio_aca) <= Number(f.mejor_precio)));
   const comprarAca = visibles.filter(conviene);
   const enOtro = visibles.filter((f) => !conviene(f));
-  const totalAca = comprarAca.reduce((a, f) => a + Number(f.precio_aca) * Number(f.cantidad), 0);
+  const totalAca = comprarAca.reduce((a, f) => a + Number(f.precio_aca ?? 0) * Number(f.cantidad), 0);
   const superNombre = supers?.find((s) => s.id === superId)?.nombre;
   const qs = (extra: Record<string, string>) =>
     "?" + new URLSearchParams({ ...(listaId ? { lista: listaId } : {}), ...(superId ? { s: superId } : {}), ...extra }).toString();
@@ -88,7 +98,8 @@ export default async function SuperPage({
             <ul className="divide-y rounded border bg-white text-sm">
               {comprarAca.map((f) => (
                 <Item key={f.item_id} f={f}>
-                  <span className="font-semibold">{pesos(f.precio_aca)}</span>
+                  {f.lugar_id === superId && <span className="mr-1 rounded bg-emerald-100 px-1 text-xs text-emerald-800">Anotado para acá</span>}
+                  <span className="font-semibold">{f.precio_aca != null ? pesos(f.precio_aca) : "sin precio"}</span>
                   {f.mejor_precio != null && Number(f.mejor_precio) > Number(f.precio_aca) && (
                     <span className="text-neutral-500"> · {pesos(Number(f.mejor_precio) - Number(f.precio_aca))} menos que {f.mejor_super}</span>
                   )}
@@ -105,6 +116,7 @@ export default async function SuperPage({
               <ul className="divide-y rounded border bg-white text-sm">
                 {enOtro.map((f) => (
                   <Item key={f.item_id} f={f}>
+                    {f.lugar && <span className="mr-1 rounded bg-neutral-100 px-1 text-xs">Anotado: {f.lugar}</span>}
                     {f.mejor_precio != null ? (
                       <>
                         <span className="font-semibold">{f.mejor_super} {pesos(f.mejor_precio)}</span>
@@ -128,10 +140,12 @@ export default async function SuperPage({
           <h2 className="font-semibold">Lista de Setto</h2>
           {settoError && <p className="text-sm text-red-600">{settoError}</p>}
           <ul className="divide-y rounded border bg-white text-sm">
-            {setto?.map((p) => {
+            {[...(setto ?? [])].sort((a, b) => Number(b.lugar?.id === superId) - Number(a.lugar?.id === superId)).map((p) => {
               const c = p.alias?.producto_id ? settoComp.get(p.alias.producto_id) : undefined;
               let detalle: React.ReactNode;
-              if (!p.alias) detalle = <Link href="/setto" className="text-amber-700 underline">Vincular con un producto</Link>;
+              const aca = p.lugar?.id === superId;
+              if (aca && (!p.alias || !p.alias.producto_id) ) detalle = <span className="font-semibold text-emerald-700">Anotado para comprar acá</span>;
+              else if (!p.alias) detalle = <Link href="/setto" className="text-amber-700 underline">Vincular con un producto</Link>;
               else if (!p.alias.producto_id) detalle = <span className="text-neutral-500">No está en súpers{p.donde ? ` · ${p.donde}` : ""}</span>;
               else if (c?.precio_aca != null && (c.mejor_precio == null || Number(c.precio_aca) <= Number(c.mejor_precio)))
                 detalle = <span className="font-semibold text-emerald-700">Comprá acá · {pesos(c.precio_aca)}</span>;
@@ -145,7 +159,10 @@ export default async function SuperPage({
               else detalle = <span className="text-neutral-500">Sin precios</span>;
               return (
                 <li key={p.id} className="p-3">
-                  <p>{p.urgente && <span className="text-red-600">Urgente · </span>}{p.item}{p.cantidad ? ` · ${p.cantidad}` : ""}</p>
+                  <p>
+                    {p.urgente && <span className="text-red-600">Urgente · </span>}{p.item}{p.cantidad ? ` · ${p.cantidad}` : ""}
+                    {p.lugar && <span className={`ml-1 rounded px-1 text-xs ${aca ? "bg-emerald-100 text-emerald-800" : "bg-neutral-100"}`}>{aca ? "Anotado para acá" : p.lugar.nombre}</span>}
+                  </p>
                   <p>{detalle}</p>
                   {p.alias?.nombre && <p className="text-xs text-neutral-400">{p.alias.nombre}</p>}
                 </li>
