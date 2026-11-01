@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { pendientesConAlias } from "@/lib/setto";
 import { presentacion } from "@/lib/formato";
+import { leerDescuentos, mejorDescuento, hoyAR, textoDescuento, type Descuento } from "@/lib/descuentos";
 
 export type Opcion = {
   orden: number; producto_id: string; nombre: string; dim: string; cant_base: number;
@@ -34,8 +35,8 @@ export type Entrada = {
 /** Cuánto sale todo en un solo súper vs. dividir la compra en dos. */
 export type PlanViaje = {
   items: number;
-  solo: { super: string; total: number; cubre: number };
-  par: { a: string; b: string; total: number; ahorro: number; enA: string[]; enB: string[] } | null;
+  solo: { super: string; total: number; cubre: number; promo: string | null };
+  par: { a: string; b: string; total: number; ahorro: number; enA: string[]; enB: string[]; promoA: string | null; promoB: string | null } | null;
 };
 
 export type Grupo = { id: string; nombre: string; entradas: Entrada[]; total: number; anotado: boolean };
@@ -94,7 +95,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
   // Análisis guardados (1 consulta) + mejor precio de los productos fijados (si hay)
   const idsFijos = [...new Set(entradas.map((e) => e.producto?.id).filter((x): x is string => !!x))];
   const hace30 = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
-  const [{ data: guardados }, { data: fijos }, { data: supers }, { data: fijosPorSuper }] = await Promise.all([
+  const [{ data: guardados }, { data: fijos }, { data: supers }, { data: fijosPorSuper }, descuentos] = await Promise.all([
     entradas.length
       ? supabase.rpc("leer_sugerencias", { p_terminos: entradas.map((e) => e.termino), p_dims: entradas.map((e) => e.dim) })
       : Promise.resolve({ data: [] }),
@@ -104,6 +105,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
       ? supabase.from("precios").select("producto_id, supermercado_id, precio, precio_promo").in("producto_id", idsFijos)
           .gte("fecha", hace30).order("fecha", { ascending: false }).order("created_at", { ascending: false }).limit(3000)
       : Promise.resolve({ data: [] }),
+    leerDescuentos(supabase).catch(() => [] as Descuento[]),
   ]);
   // Último precio de cada producto fijado en cada súper
   const fijoSuper = new Map<string, Map<string, number>>();
@@ -185,12 +187,18 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
     }
     return { titulo: e.titulo, m };
   }).filter((x) => x.m.size > 0);
-  const plan = planDelViaje(precios, nombreSuper);
+  // Descuento de hoy por súper (banco / billetera): se descuenta del precio para comparar
+  const { dia } = hoyAR();
+  const promoHoy = new Map<string, Descuento>();
+  for (const sid of nombreSuper.keys()) { const d = mejorDescuento(descuentos, sid, dia); if (d) promoHoy.set(sid, d); }
+  for (const p of precios) for (const [sid, v] of p.m) { const d = promoHoy.get(sid); if (d) p.m.set(sid, v * (1 - d.porcentaje / 100)); }
+  const plan = planDelViaje(precios, nombreSuper, promoHoy);
 
-  return { grupos: orden, entradas, settoError: settoRes.error, porAnalizar, plan };
+  return { grupos: orden, entradas, settoError: settoRes.error, porAnalizar, plan, descuentos };
 }
 
-function planDelViaje(items: { titulo: string; m: Map<string, number> }[], nombres: Map<string, string>): PlanViaje | null {
+function planDelViaje(items: { titulo: string; m: Map<string, number> }[], nombres: Map<string, string>, promos: Map<string, Descuento>): PlanViaje | null {
+  const promo = (id: string) => { const d = promos.get(id); return d ? textoDescuento(d) : null; };
   if (items.length < 2) return null;
   const ids = [...new Set(items.flatMap((i) => [...i.m.keys()]))];
   // Un solo súper: el que tiene más cosas y, a igualdad, el más barato
@@ -215,9 +223,9 @@ function planDelViaje(items: { titulo: string; m: Map<string, number> }[], nombr
     }
     if (!ok || !enA.length || !enB.length) continue;
     const ahorro = solo.total - total;
-    if (!par || ahorro > par.ahorro) par = { a: nombres.get(a) ?? a, b: nombres.get(b) ?? b, total, ahorro, enA, enB };
+    if (!par || ahorro > par.ahorro) par = { a: nombres.get(a) ?? a, b: nombres.get(b) ?? b, total, ahorro, enA, enB, promoA: promo(a), promoB: promo(b) };
   }
   // Solo vale la pena si ahorrás al menos $1.500 o 5%
   if (par && (par.ahorro < 1500 && par.ahorro < solo.total * 0.05)) par = null;
-  return { items: items.length, solo: { super: nombres.get(solo.id) ?? solo.id, total: solo.total, cubre: solo.cubre }, par };
+  return { items: items.length, solo: { super: nombres.get(solo.id) ?? solo.id, total: solo.total, cubre: solo.cubre, promo: promo(solo.id) }, par };
 }

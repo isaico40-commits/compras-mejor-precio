@@ -14,7 +14,9 @@ export type BloqueSuper = { titulo: string; tono: "verde" | "naranja"; filas: Fi
 const fmt = (n: number) => "$" + Math.round(n).toLocaleString("es-AR");
 
 /** Lista del súper con tildes: lo que metés al changuito se tacha y abajo ves cuánto llevás. */
-export function Changuito({ superId, bloques }: { superId: string; bloques: BloqueSuper[] }) {
+export type PromoHoy = { porcentaje: number; tope: number | null; minimo: number | null; medio: string };
+
+export function Changuito({ superId, bloques, promo }: { superId: string; bloques: BloqueSuper[]; promo?: PromoHoy | null }) {
   const router = useRouter();
   const hoy = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
   const claveLS = `changuito:${superId}:${hoy}`;
@@ -38,6 +40,8 @@ export function Changuito({ superId, bloques }: { superId: string; bloques: Bloq
   const todas = useMemo(() => bloques.flatMap((b) => b.filas), [bloques]);
   const enCarro = todas.filter((f) => tildados.has(f.key));
   const total = enCarro.reduce((t, f) => t + (f.precio ?? 0), 0);
+  const ahorro = promo && (!promo.minimo || total >= promo.minimo)
+    ? Math.min((total * promo.porcentaje) / 100, promo.tope ?? Infinity) : 0;
   const sinPrecio = enCarro.filter((f) => f.precio == null).length;
 
   const terminar = () => start(async () => {
@@ -47,7 +51,7 @@ export function Changuito({ superId, bloques }: { superId: string; bloques: Bloq
     }));
     const r = await terminarCompra(superId, items);
     try { localStorage.removeItem(claveLS); } catch {}
-    setFin({ total, n: items.length, aviso: r.settoError });
+    setFin({ total: total - ahorro, n: items.length, aviso: r.settoError });
     setTildados(new Set());
     router.refresh();
   });
@@ -100,7 +104,8 @@ export function Changuito({ superId, bloques }: { superId: string; bloques: Bloq
           <div className="mx-auto flex max-w-xl items-center justify-between gap-3 rounded-2xl bg-tinta px-4 py-3 text-white shadow-lg">
             <span>
               <span className="block text-xs opacity-75">En el changuito: {enCarro.length}{sinPrecio ? ` (${sinPrecio} sin precio)` : ""}</span>
-              <span className="num text-lg font-bold">{fmt(total)}</span>
+              <span className="num text-lg font-bold">{fmt(total - ahorro)}</span>
+              {ahorro > 0 && <span className="block text-xs opacity-75">con {promo!.medio}: −{fmt(ahorro)}</span>}
             </span>
             <button onClick={terminar} disabled={pendiente} className="rounded-xl bg-marca px-4 py-2.5 font-semibold disabled:opacity-60">
               {pendiente ? "Guardando…" : "Terminar compra"}

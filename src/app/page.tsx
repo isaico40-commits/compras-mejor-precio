@@ -7,10 +7,14 @@ import { AutoAnalizar } from "@/components/AutoAnalizar";
 import { Encabezado, Pill } from "@/components/ui";
 import { sugerirRecompra } from "@/lib/recompra";
 import { agregarALista } from "@/app/actions";
+import Link from "next/link";
+import { DIAS, hoyAR, textoDescuento } from "@/lib/descuentos";
 
 export default async function Home() {
   const supabase = await createClient();
-  const { grupos, entradas, settoError, porAnalizar, plan } = await armarLista(supabase);
+  const { grupos, entradas, settoError, porAnalizar, plan, descuentos } = await armarLista(supabase);
+  const { dia } = hoyAR();
+  const promosHoy = descuentos.filter((d) => d.dias.includes(dia));
   const recompra = await sugerirRecompra(supabase, entradas.map((e) => e.termino)).catch(() => []);
   const total = grupos.reduce((a, g) => a + g.total, 0);
   const lugares = grupos.filter((g) => g.id !== "sin-precio" && g.id !== "analizando").length;
@@ -37,6 +41,21 @@ export default async function Home() {
             <p className="mt-2">Escribí arriba lo que necesitás comprar.</p>
           </div>
         )}
+
+        <Link href="/descuentos" className="mt-4 block rounded-2xl border border-linea bg-tarjeta px-4 py-3 active:bg-fondo">
+          <span className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wide text-suave">Descuentos de hoy · {DIAS[dia]}</span>
+            <span className="text-sm font-semibold text-marca">Ver semana</span>
+          </span>
+          {promosHoy.length ? (
+            <span className="mt-1 block text-sm">
+              {promosHoy.slice(0, 4).map((d) => <span key={d.id} className="block"><b>{d.super}</b>: {textoDescuento(d)}</span>)}
+              {promosHoy.length > 4 && <span className="block text-suave">y {promosHoy.length - 4} más</span>}
+            </span>
+          ) : (
+            <span className="mt-1 block text-sm text-suave">Hoy no hay descuentos cargados.</span>
+          )}
+        </Link>
 
         {recompra.length > 0 && (
           <section className="mt-5">
@@ -65,6 +84,7 @@ export default async function Home() {
               Todo en <b>{plan.solo.super}</b>: <span className="num font-semibold">{pesos(plan.solo.total)}</span>
               {plan.solo.cubre < plan.items && <span className="text-sm text-suave"> ({plan.solo.cubre} de {plan.items} cosas)</span>}
             </p>
+            {plan.solo.promo && <p className="text-xs text-marca">Ya con {plan.solo.promo} de hoy</p>}
             {plan.par ? (
               <>
                 <p className="mt-1">
@@ -77,6 +97,11 @@ export default async function Home() {
                   <summary className="cursor-pointer font-semibold text-marca">Qué comprar en cada uno</summary>
                   <p className="mt-1"><b>{plan.par.a}:</b> {plan.par.enA.join(", ")}</p>
                   <p className="mt-1"><b>{plan.par.b}:</b> {plan.par.enB.join(", ")}</p>
+                  {(plan.par.promoA || plan.par.promoB) && (
+                    <p className="mt-1 text-xs text-marca">
+                      Incluye descuentos de hoy: {[plan.par.promoA && `${plan.par.a} ${plan.par.promoA}`, plan.par.promoB && `${plan.par.b} ${plan.par.promoB}`].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
                 </details>
               </>
             ) : (

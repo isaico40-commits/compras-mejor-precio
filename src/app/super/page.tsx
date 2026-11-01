@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { armarLista, type Entrada } from "@/lib/lista";
 import { pesos, porUnidad, presentacion, normalizar } from "@/lib/formato";
 import { Changuito, type FilaSuper } from "@/components/Changuito";
+import { leerDescuentos, mejorDescuento, hoyAR, textoDescuento, DIAS } from "@/lib/descuentos";
 import { Encabezado, Pill } from "@/components/ui";
 
 type Oportunidad = {
@@ -22,7 +23,11 @@ type Aca = { orden: number; producto_id: string; nombre: string; dim: string; ca
 export default async function SuperPage({ searchParams }: { searchParams: Promise<{ s?: string }> }) {
   const superId = (await searchParams).s;
   const supabase = await createClient();
-  const { data: supers } = await supabase.from("supermercados").select("id, nombre").order("nombre");
+  const [{ data: supers }, descuentos] = await Promise.all([
+    supabase.from("supermercados").select("id, nombre").order("nombre"),
+    leerDescuentos(supabase).catch(() => []),
+  ]);
+  const { dia } = hoyAR();
 
   if (!superId) {
     return (
@@ -33,6 +38,7 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
             <li key={s.id}>
               <Link href={`/super?s=${s.id}`} className="block rounded-2xl border border-linea bg-tarjeta px-4 py-4 font-semibold active:bg-marca-suave">
                 {s.nombre}
+                {(() => { const d = mejorDescuento(descuentos, s.id, dia); return d ? <span className="mt-1 block text-xs font-semibold text-marca">Hoy −{d.porcentaje}% {d.medio}</span> : null; })()}
               </Link>
             </li>
           ))}
@@ -42,6 +48,8 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
   }
 
   const nombreSuper = supers?.find((s) => s.id === superId)?.nombre ?? "";
+  const promoHoy = mejorDescuento(descuentos, superId, dia);
+  const otrosDias = descuentos.filter((d) => d.supermercado_id === superId && !d.dias.includes(dia));
   const [{ entradas }, { data: opsRaw }, { data: historial }] = await Promise.all([
     armarLista(supabase),
     supabase.rpc("oportunidades_en_super", { p_super: superId }),
@@ -95,7 +103,16 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
         <Link href="/super" className="pb-1 text-sm font-semibold text-marca">Cambiar</Link>
       </Encabezado>
       <div className="space-y-6 px-4 pb-20">
-        <Changuito superId={superId} bloques={[
+        {promoHoy ? (
+          <p className="rounded-2xl bg-marca-suave px-4 py-3 text-sm text-marca">
+            <b>Hoy: {textoDescuento(promoHoy)}</b>{promoHoy.detalle && <span className="block text-xs">{promoHoy.detalle}</span>}
+          </p>
+        ) : otrosDias.length > 0 && (
+          <p className="rounded-2xl bg-alerta-suave px-4 py-3 text-sm text-alerta">
+            Hoy no hay descuento acá. {otrosDias.map((d) => `${d.dias.map((x) => DIAS[x]).join(", ")}: ${textoDescuento(d)}`).join(" · ")}
+          </p>
+        )}
+        <Changuito superId={superId} promo={promoHoy ? { porcentaje: promoHoy.porcentaje, tope: promoHoy.tope, minimo: promoHoy.minimo, medio: promoHoy.medio } : null} bloques={[
           { titulo: "Comprá acá", tono: "verde", filas: aca.map((f) => aFila(f, false)) },
           { titulo: "Mejor en otro lado", tono: "naranja", filas: otro.map((f) => aFila(f, true)) },
         ]} />

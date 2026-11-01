@@ -354,3 +354,39 @@ export async function subirTicket(base64: string, tipo: string, nota: string | n
   revalidatePath("/tickets");
   return { ok: true };
 }
+
+/** Alta o edición de un descuento por día / súper / medio de pago */
+export async function guardarDescuento(form: FormData) {
+  const supabase = await createClient();
+  const superId = await resolverLugar(supabase, form);
+  if (!superId) throw new Error("Elegí o escribí el lugar");
+  const dias = form.getAll("dias").map(Number).filter((n) => n >= 0 && n <= 6);
+  if (!dias.length) throw new Error("Elegí al menos un día");
+  const fila = {
+    supermercado_id: superId, dias,
+    medio: txt(form.get("medio")) ?? "Otro",
+    porcentaje: num(form.get("porcentaje")),
+    tope: num(form.get("tope")),
+    tope_periodo: txt(form.get("tope_periodo")),
+    minimo: num(form.get("minimo")),
+    detalle: txt(form.get("detalle")),
+    hasta: txt(form.get("hasta")),
+  };
+  const id = txt(form.get("id"));
+  const hoy = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+  const { error } = id
+    ? await supabase.from("descuentos").update({ ...fila, verificado: hoy }).eq("id", id)
+    : await supabase.from("descuentos").insert({ ...fila, fuente: "manual", verificado: hoy });
+  if (error) throw new Error(error.message);
+  revalidatePath("/descuentos");
+  revalidatePath("/");
+  redirect("/descuentos?ok=1");
+}
+
+export async function borrarDescuento(form: FormData) {
+  const supabase = await createClient();
+  await supabase.from("descuentos").delete().eq("id", String(form.get("id")));
+  revalidatePath("/descuentos");
+  revalidatePath("/");
+  redirect("/descuentos");
+}
