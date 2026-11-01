@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import type { Grupo, Entrada } from "@/lib/lista";
 import { Fila } from "@/components/FilaLista";
 import { ConfirmarCompra, type ParaConfirmar } from "@/components/ConfirmarCompra";
-import { quitarItems, lugarItems, type ItemLote } from "@/app/actions";
+import { quitarItems, lugarItems, rubroItems, type ItemLote } from "@/app/actions";
+import { RUBROS, type Rubro } from "@/lib/rubros";
 
 const fmt = (n: number) => "$" + Math.round(n).toLocaleString("es-AR");
 
@@ -13,7 +14,7 @@ const fmt = (n: number) => "$" + Math.round(n).toLocaleString("es-AR");
 export function ListaInteractiva({ grupos, supers }: { grupos: Grupo[]; supers: { id: string; nombre: string }[] }) {
   const router = useRouter();
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const [modal, setModal] = useState<"comprado" | "lugar" | null>(null);
+  const [modal, setModal] = useState<"comprado" | "lugar" | "rubro" | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [pendiente, start] = useTransition();
   const [lugar, setLugar] = useState("");
@@ -28,7 +29,7 @@ export function ListaInteractiva({ grupos, supers }: { grupos: Grupo[]; supers: 
   // Súper sugerido para "comprado": el anotado o el recomendado más repetido
   const sugerido = (() => {
     const c = new Map<string, number>();
-    for (const e of elegidas) { const id = e.lugar?.id ?? e.recomendado?.superId; if (id) c.set(id, (c.get(id) ?? 0) + 1); }
+    for (const e of elegidas) { const id = e.lugar?.id ?? e.recomendado?.superId; if (id && !id.startsWith("rubro-")) c.set(id, (c.get(id) ?? 0) + 1); }
     return [...c.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   })();
   const paraConfirmar: ParaConfirmar[] = elegidas.map((e) => ({
@@ -77,9 +78,10 @@ export function ListaInteractiva({ grupos, supers }: { grupos: Grupo[]; supers: 
               <span>{sel.size} seleccionado{sel.size === 1 ? "" : "s"}</span>
               <button onClick={() => setSel(new Set())} className="opacity-75">Cancelar</button>
             </div>
-            <div className="grid grid-cols-3 gap-2 text-sm font-semibold">
+            <div className="grid grid-cols-4 gap-2 text-sm font-semibold">
               <button onClick={() => setModal("comprado")} className="rounded-xl bg-marca py-2.5">Comprado</button>
               <button onClick={() => { setLugar(""); setNuevo(""); setModal("lugar"); }} className="rounded-xl bg-white/15 py-2.5">Dónde</button>
+              <button onClick={() => setModal("rubro")} className="rounded-xl bg-white/15 py-2.5">Rubro</button>
               <button
                 disabled={pendiente}
                 onClick={() => {
@@ -102,6 +104,25 @@ export function ListaInteractiva({ grupos, supers }: { grupos: Grupo[]; supers: 
           onCerrar={() => setModal(null)}
           onListo={(r) => terminar(r.settoError ?? `Listo: ${r.n} comprados · ${fmt(r.total)}`)}
         />
+      )}
+
+      {modal === "rubro" && (
+        <div className="fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setModal(null)}>
+          <div className="mx-auto w-full max-w-xl rounded-t-3xl bg-fondo p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-linea" />
+            <p className="text-lg font-bold">¿Qué son estos {sel.size}?</p>
+            <p className="mb-3 text-sm text-suave">Lo que no es de súper no se compara con Precios Claros: te muestro lo último que pagaste.</p>
+            <div className="grid grid-cols-2 gap-2">
+              {RUBROS.map((r) => (
+                <button key={r.id} disabled={pendiente}
+                  onClick={() => start(async () => { await rubroItems(lote(elegidas), r.id as Rubro); terminar(`Listo: ${r.nombre}.`); })}
+                  className="rounded-xl border border-linea bg-tarjeta py-3 font-semibold disabled:opacity-60">{r.nombre}</button>
+              ))}
+            </div>
+            <button disabled={pendiente} onClick={() => start(async () => { await rubroItems(lote(elegidas), null); terminar("Listo: rubro automático."); })}
+              className="mt-2 w-full py-2 text-sm font-semibold text-suave">Que lo detecte solo</button>
+          </div>
+        </div>
       )}
 
       {modal === "lugar" && (

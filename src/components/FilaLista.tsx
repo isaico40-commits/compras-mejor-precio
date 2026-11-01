@@ -4,6 +4,8 @@ import Link from "next/link";
 import type { Entrada } from "@/lib/lista";
 import { pesos, porUnidad, presentacion } from "@/lib/formato";
 
+const fecha = (f: string) => { const [, m, d] = f.split("-"); return `${Number(d)}/${Number(m)}`; };
+
 export function Fila({ e, grupoId, sel, seleccionando, onToggle }: {
   e: Entrada; grupoId: string; sel: boolean; seleccionando: boolean; onToggle: () => void;
 }) {
@@ -34,7 +36,13 @@ export function Fila({ e, grupoId, sel, seleccionando, onToggle }: {
             </span>
           )}
         </div>
-        {r ? (
+        {e.rubro !== "super" ? (
+          <p className="mt-0.5 line-clamp-1 text-sm text-suave">
+            {e.ultimoPago
+              ? <>Última vez <span className="num">{e.ultimoPago.precio != null ? pesos(e.ultimoPago.precio) : "sin precio"}</span> · {fecha(e.ultimoPago.fecha)}{e.ultimoPago.lugar ? ` · ${e.ultimoPago.lugar}` : ""}</>
+              : r ? "Precio que cargaste" : "Sin precio: se guarda cuando lo marcás comprado"}
+          </p>
+        ) : r ? (
           <p className="mt-0.5 line-clamp-1 text-sm text-suave">
             {r.nombre !== e.titulo ? r.nombre : ""}
             {presentacion(r.cant, r.dim) && <> · {presentacion(r.cant, r.dim)}</>}

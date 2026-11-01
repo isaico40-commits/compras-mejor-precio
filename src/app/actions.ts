@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { esRubro, type Rubro } from "@/lib/rubros";
 import { marcarEnSetto, actualizarEnSetto, agregarEnSetto } from "@/lib/setto";
 
 const num = (v: FormDataEntryValue | null) => (v === null || v === "" ? null : Number(v));
@@ -180,6 +181,7 @@ export async function guardarItem(form: FormData) {
   if (form.has("frecuencia_dias")) cambios.frecuencia_dias = num(form.get("frecuencia_dias"));
   if (form.has("lugar_id") || form.has("nuevo_lugar")) cambios.lugar_id = await resolverLugar(supabase, form, "lugar_id");
   if (form.has("producto_id")) cambios.producto_id = txt(form.get("producto_id"));
+  if (form.has("rubro")) { const r = txt(form.get("rubro")); cambios.rubro = esRubro(r) ? r : null; }
   const { error } = await supabase.from("lista_items").update(cambios).eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/");
@@ -198,7 +200,7 @@ export async function borrarItem(form: FormData) {
 export async function guardarSetto(form: FormData) {
   const supabase = await createClient();
   const texto = String(form.get("texto"));
-  const { data: actual } = await supabase.from("alias_productos").select("termino, producto_id, nombre, lugar_id").eq("texto", texto).maybeSingle();
+  const { data: actual } = await supabase.from("alias_productos").select("termino, producto_id, nombre, lugar_id, rubro").eq("texto", texto).maybeSingle();
   const nombre = form.has("nombre") ? txt(form.get("nombre")) : actual?.nombre ?? null;
   const fila = {
     texto,
@@ -208,6 +210,7 @@ export async function guardarSetto(form: FormData) {
       : form.has("termino") ? txt(form.get("termino"))?.toLowerCase() ?? null : actual?.termino ?? null,
     producto_id: form.has("producto_id") ? txt(form.get("producto_id")) : actual?.producto_id ?? null,
     lugar_id: form.has("lugar_id") || form.has("nuevo_lugar") ? await resolverLugar(supabase, form, "lugar_id") : actual?.lugar_id ?? null,
+    rubro: form.has("rubro") ? (esRubro(txt(form.get("rubro"))) ? txt(form.get("rubro")) : null) : actual?.rubro ?? null,
   };
   const { error } = await supabase.from("alias_productos").upsert(fila, { onConflict: "user_id,texto" });
   if (error) throw new Error(error.message);
@@ -434,10 +437,10 @@ export async function lugarItems(items: ItemLote[], lugarId: string | null, nuev
   if (mios.length) await supabase.from("lista_items").update({ lugar_id: id }).in("id", mios);
   const setto = items.filter((i) => i.origen === "setto" && i.texto);
   if (setto.length) {
-    const { data: actuales } = await supabase.from("alias_productos").select("texto, producto_id, nombre, termino").in("texto", setto.map((i) => i.texto!));
+    const { data: actuales } = await supabase.from("alias_productos").select("texto, producto_id, nombre, termino, rubro").in("texto", setto.map((i) => i.texto!));
     const porTexto = new Map((actuales ?? []).map((a) => [a.texto, a]));
     await supabase.from("alias_productos").upsert(
-      setto.map((i) => ({ ...(porTexto.get(i.texto!) ?? { producto_id: null, nombre: null, termino: null }), texto: i.texto!, lugar_id: id })),
+      setto.map((i) => ({ ...(porTexto.get(i.texto!) ?? { producto_id: null, nombre: null, termino: null, rubro: null }), texto: i.texto!, lugar_id: id })),
       { onConflict: "user_id,texto" },
     );
   }
@@ -459,4 +462,39 @@ export async function agregarVarios(nombres: string[]) {
   }
   revalidatePath("/");
   return { n };
+}
+
+/** Rubro de varios ítems (null = detectarlo por el nombre) */
+export async function rubroItems(items: ItemLote[], rubro: Rubro | null) {
+  const supabase = await createClient();
+  const r = esRubro(rubro) ? rubro : null;
+  const mios = items.filter((i) => i.origen === "mio").map((i) => i.itemId);
+  if (mios.length) await supabase.from("lista_items").update({ rubro: r }).in("id", mios);
+  const setto = items.filter((i) => i.origen === "setto" && i.texto);
+  if (setto.length) {
+    const { data: actuales } = await supabase.from("alias_productos").select("texto, producto_id, nombre, termino, lugar_id").in("texto", setto.map((i) => i.texto!));
+    const porTexto = new Map((actuales ?? []).map((a) => [a.texto, a]));
+    await supabase.from("alias_productos").upsert(
+      setto.map((i) => ({ ...(porTexto.get(i.texto!) ?? { producto_id: null, nombre: null, termino: null, lugar_id: null }), texto: i.texto!, rubro: r })),
+      { onConflict: "user_id,texto" },
+    );
+  }
+  revalidatePath("/");
+  revalidatePath("/super");
+}
+
+/** Comercio habitual de un rubro ("mi verdulería"). Vacío = ninguno. */
+export async function guardarHabitual(form: FormData) {
+  const supabase = await createClient();
+  const rubro = txt(form.get("rubro"));
+  if (!esRubro(rubro) || rubro === "super") throw new Error("Rubro inválido");
+  const lugarId = await resolverLugar(supabase, form, "lugar_id");
+  const { error } = lugarId
+    ? await supabase.from("rubros_habituales").upsert({ rubro, lugar_id: lugarId }, { onConflict: "user_id,rubro" })
+    : await supabase.from("rubros_habituales").delete().eq("rubro", rubro);
+  if (error) throw new Error(error.message);
+  revalidatePath("/");
+  revalidatePath("/super");
+  const volver = txt(form.get("volver_a"));
+  if (volver?.startsWith("/item/")) revalidatePath(volver);
 }
