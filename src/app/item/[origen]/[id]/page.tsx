@@ -30,8 +30,8 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
     const pend = await pendientesConAlias(supabase);
     const s = pend?.find((x) => x.id === id);
     if (!s) notFound();
-    titulo = s.item; texto = s.texto; donde = s.lugar?.nombre ?? s.donde;
-    termino = s.alias?.termino || s.busqueda || limpiarItem(s.item);
+    titulo = s.alias?.nombreItem || s.item; texto = s.texto; donde = s.lugar?.nombre ?? s.donde;
+    termino = s.alias?.termino || (s.alias?.nombreItem?.toLowerCase() ?? "") || s.busqueda || limpiarItem(s.item);
     dim = s.alias?.dim ?? null; productoId = s.alias?.producto_id ?? null; productoNombre = s.alias?.nombre ?? null;
   }
 
@@ -55,6 +55,18 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
       </Encabezado>
 
       <div className="space-y-5 px-4">
+        <Tarjeta className="p-4">
+          <form action={guardar} className="space-y-2">
+            {ocultos}
+            <label className="block text-sm font-semibold">Nombre</label>
+            <div className="flex gap-2">
+              <input name="nombre" defaultValue={titulo} className={inputCls} />
+              <button className={btnSecCls}>Guardar</button>
+            </div>
+            {!esMio && <p className="text-xs text-suave">Solo cambia acá. En la caja de Setto sigue como lo escribiste.</p>}
+          </form>
+        </Tarjeta>
+
         <Tarjeta className="p-4">
           <form action={guardar} className="space-y-2">
             {ocultos}

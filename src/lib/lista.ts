@@ -77,8 +77,8 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
   for (const s of settoRes.data ?? []) {
     entradas.push({
       key: `setto-${s.id}`, origen: "setto", itemId: s.id,
-      titulo: s.item, cantidad: 1, cantidadTexto: s.cantidad, urgente: !!s.urgente,
-      termino: s.alias?.termino || (s.alias?.nombre ? dosPalabras(s.alias.nombre.toLowerCase()) : s.busqueda),
+      titulo: s.alias?.nombreItem || s.item, cantidad: 1, cantidadTexto: s.cantidad, urgente: !!s.urgente,
+      termino: s.alias?.termino || (s.alias?.nombreItem ? s.alias.nombreItem.toLowerCase() : s.alias?.nombre ? dosPalabras(s.alias.nombre.toLowerCase()) : s.busqueda),
       dim: s.alias?.dim ?? null,
       producto: s.alias?.producto_id ? { id: s.alias.producto_id, nombre: s.alias.nombre ?? "", cant_base: null } : null,
       lugar: s.lugar, textoSetto: s.texto, ultimaCompra: null, frecuencia: null,

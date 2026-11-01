@@ -9,7 +9,7 @@ export type PendienteSetto = {
 export type PendienteConProducto = PendienteSetto & {
   texto: string;                       // clave del alias
   busqueda: string;                    // texto limpio para buscar en el catálogo
-  alias: { producto_id: string | null; nombre: string | null; dim: string | null; termino: string | null } | undefined;
+  alias: { producto_id: string | null; nombre: string | null; dim: string | null; termino: string | null; nombreItem: string | null } | undefined;
   lugar: { id: string; nombre: string } | null;   // donde (o lugar mencionado en el texto) -> súper/lugar de la app
 };
 
@@ -47,7 +47,7 @@ export async function leerPendientesSetto(supabase: SupabaseClient): Promise<Pen
 export async function pendientesConAlias(supabase: SupabaseClient): Promise<PendienteConProducto[] | null> {
   const pendientes = await leerPendientesSetto(supabase);
   if (!pendientes) return null;
-  const { data: alias } = await supabase.from("alias_productos").select("texto, producto_id, termino, productos(nombre, dim)");
+  const { data: alias } = await supabase.from("alias_productos").select("texto, producto_id, termino, nombre, productos(nombre, dim)");
   const { data: lugares } = await supabase.from("supermercados").select("id, nombre");
   const porNombre = (lugares ?? []).map((l) => ({ ...l, n: normalizar(l.nombre) }));
   const buscarLugar = (p: PendienteSetto) => {
@@ -59,7 +59,7 @@ export async function pendientesConAlias(supabase: SupabaseClient): Promise<Pend
   const mapa = new Map(
     (alias ?? []).map((a) => {
       const prod = a.productos as unknown as { nombre: string; dim: string | null } | null;
-      return [a.texto, { producto_id: a.producto_id, nombre: prod?.nombre ?? null, dim: prod?.dim ?? null, termino: a.termino }];
+      return [a.texto, { producto_id: a.producto_id, nombre: prod?.nombre ?? null, dim: prod?.dim ?? null, termino: a.termino, nombreItem: a.nombre }];
     }),
   );
   return pendientes.map((p) => ({ ...p, texto: claveAlias(p.item), busqueda: limpiarItem(p.item), alias: mapa.get(claveAlias(p.item)),

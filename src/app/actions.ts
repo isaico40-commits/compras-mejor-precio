@@ -153,6 +153,10 @@ export async function guardarItem(form: FormData) {
   const id = String(form.get("id"));
   const cambios: Record<string, unknown> = {};
   if (form.has("termino")) cambios.termino = txt(form.get("termino"))?.toLowerCase() ?? null;
+  if (form.has("nombre")) {
+    cambios.nombre = txt(form.get("nombre"));
+    if (cambios.nombre) cambios.termino = String(cambios.nombre).toLowerCase();
+  }
   if (form.has("cantidad")) cambios.cantidad = num(form.get("cantidad")) ?? 1;
   if (form.has("frecuencia_dias")) cambios.frecuencia_dias = num(form.get("frecuencia_dias"));
   if (form.has("lugar_id")) cambios.lugar_id = txt(form.get("lugar_id"));
@@ -175,10 +179,14 @@ export async function borrarItem(form: FormData) {
 export async function guardarSetto(form: FormData) {
   const supabase = await createClient();
   const texto = String(form.get("texto"));
-  const { data: actual } = await supabase.from("alias_productos").select("termino, producto_id").eq("texto", texto).maybeSingle();
+  const { data: actual } = await supabase.from("alias_productos").select("termino, producto_id, nombre").eq("texto", texto).maybeSingle();
+  const nombre = form.has("nombre") ? txt(form.get("nombre")) : actual?.nombre ?? null;
   const fila = {
     texto,
-    termino: form.has("termino") ? txt(form.get("termino"))?.toLowerCase() ?? null : actual?.termino ?? null,
+    nombre,
+    termino: form.has("nombre") && nombre
+      ? nombre.toLowerCase()
+      : form.has("termino") ? txt(form.get("termino"))?.toLowerCase() ?? null : actual?.termino ?? null,
     producto_id: form.has("producto_id") ? txt(form.get("producto_id")) : actual?.producto_id ?? null,
   };
   const { error } = await supabase.from("alias_productos").upsert(fila, { onConflict: "user_id,texto" });
@@ -186,4 +194,81 @@ export async function guardarSetto(form: FormData) {
   revalidatePath("/");
   if (form.get("volver")) redirect("/");
   revalidatePath(`/item/setto/${String(form.get("id"))}`);
+}
+
+const MEDIDAS: Record<string, { unidad: string; factor: number }> = {
+  kg: { unidad: "kg", factor: 1 },
+  medio_kg: { unidad: "kg", factor: 0.5 },
+  g: { unidad: "gr", factor: 1 },
+  l: { unidad: "lt", factor: 1 },
+  ml: { unidad: "ml", factor: 1 },
+  u: { unidad: "un", factor: 1 },
+};
+
+/** Lee medida + cantidad del formulario: "medio_kg" + 2 -> 1 kg. */
+function leerMedida(form: FormData) {
+  const m = MEDIDAS[String(form.get("medida") ?? "u")] ?? MEDIDAS.u;
+  const cant = (num(form.get("cantidad")) ?? 1) * m.factor;
+  return { unidad: m.unidad, cantidad: cant };
+}
+
+/** Carga un precio. Si no viene producto_id, crea (o reusa) un producto propio con nombre y medida. */
+export async function guardarPrecioNuevo(form: FormData) {
+  const supabase = await createClient();
+  let productoId = txt(form.get("producto_id"));
+  if (!productoId) {
+    const nombre = txt(form.get("nombre"));
+    if (!nombre) throw new Error("Falta el nombre del producto");
+    const { unidad, cantidad } = leerMedida(form);
+    const { data: existente } = await supabase
+      .from("productos").select("id").ilike("nombre", nombre).eq("unidad", unidad).eq("cantidad", cantidad).is("ean", null).limit(1).maybeSingle();
+    if (existente) productoId = existente.id;
+    else {
+      const { data: nuevo, error } = await supabase
+        .from("productos").insert({ nombre, unidad, cantidad, marca: txt(form.get("marca")) }).select("id").single();
+      if (error) throw new Error(error.message);
+      productoId = nuevo.id;
+    }
+  }
+  const { error } = await supabase.from("precios").insert({
+    producto_id: productoId,
+    supermercado_id: String(form.get("supermercado_id")),
+    precio: num(form.get("precio")),
+    precio_promo: num(form.get("precio_promo")),
+    promo_detalle: txt(form.get("promo_detalle")),
+    fecha: txt(form.get("fecha")) ?? undefined,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/precios");
+  revalidatePath("/");
+  redirect("/precios?ok=1");
+}
+
+export async function editarPrecio(form: FormData) {
+  const supabase = await createClient();
+  const id = String(form.get("id"));
+  const { error } = await supabase.from("precios").update({
+    supermercado_id: String(form.get("supermercado_id")),
+    precio: num(form.get("precio")),
+    precio_promo: num(form.get("precio_promo")),
+    promo_detalle: txt(form.get("promo_detalle")),
+    fecha: txt(form.get("fecha")) ?? undefined,
+  }).eq("id", id);
+  if (error) throw new Error(error.message);
+  const productoId = txt(form.get("producto_id"));
+  if (productoId && form.has("nombre")) {
+    const { unidad, cantidad } = leerMedida(form);
+    await supabase.from("productos").update({ nombre: txt(form.get("nombre")), unidad, cantidad }).eq("id", productoId);
+  }
+  revalidatePath("/precios");
+  revalidatePath("/");
+  redirect("/precios?ok=1");
+}
+
+export async function borrarPrecio(form: FormData) {
+  const supabase = await createClient();
+  await supabase.from("precios").delete().eq("id", String(form.get("id")));
+  revalidatePath("/precios");
+  revalidatePath("/");
+  redirect("/precios");
 }
