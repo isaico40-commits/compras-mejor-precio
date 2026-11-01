@@ -1,197 +1,123 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { pesos } from "@/lib/formato";
+import { armarLista, type Entrada } from "@/lib/lista";
+import { pesos, porUnidad, presentacion } from "@/lib/formato";
 import { marcarComprado } from "@/app/actions";
-import { pendientesConAlias, type PendienteConProducto } from "@/lib/setto";
+import { Encabezado, Pill } from "@/components/ui";
 
-type Fila = {
-  item_id: string; producto: string; marca: string | null; cantidad: number;
-  frecuencia_dias: number | null; ultima_compra: string | null; toca: boolean;
-  precio_aca: number | null; promo_aca: string | null; fecha_aca: string | null;
-  mejor_precio: number | null; mejor_super: string | null; mejor_fecha: string | null;
-  lugar_id?: string | null; lugar?: string | null;
-};
+type Aca = { orden: number; producto_id: string; nombre: string; dim: string; cant_base: number; precio: number; por_unidad: number | null };
 
-export default async function SuperPage({
-  searchParams,
-}: { searchParams: Promise<{ lista?: string; s?: string; todos?: string }> }) {
-  const sp = await searchParams;
+export default async function SuperPage({ searchParams }: { searchParams: Promise<{ s?: string }> }) {
+  const superId = (await searchParams).s;
   const supabase = await createClient();
-  const [{ data: listas }, { data: supers }] = await Promise.all([
-    supabase.from("listas").select("id, nombre").order("created_at"),
-    supabase.from("supermercados").select("id, nombre").order("nombre"),
+  const { data: supers } = await supabase.from("supermercados").select("id, nombre").order("nombre");
+
+  if (!superId) {
+    return (
+      <main>
+        <Encabezado titulo="¿Dónde estás?" sub="Te muestro qué conviene comprar acá" />
+        <ul className="grid grid-cols-2 gap-2 px-4">
+          {supers?.map((s) => (
+            <li key={s.id}>
+              <Link href={`/super?s=${s.id}`} className="block rounded-2xl border border-linea bg-tarjeta px-4 py-4 font-semibold active:bg-marca-suave">
+                {s.nombre}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </main>
+    );
+  }
+
+  const nombreSuper = supers?.find((s) => s.id === superId)?.nombre ?? "";
+  const { entradas } = await armarLista(supabase);
+
+  // Precio acá: producto fijado -> ese producto; si no -> la opción más barata por kg/l/u de este súper
+  const fijados = entradas.filter((e) => e.producto);
+  const libres = entradas.map((e, i) => ({ e, i })).filter(({ e }) => !e.producto);
+  const [{ data: fijAca }, { data: libAca }] = await Promise.all([
+    fijados.length ? supabase.rpc("comparar_productos", { p_productos: fijados.map((e) => e.producto!.id), p_super_id: superId }) : Promise.resolve({ data: [] }),
+    libres.length
+      ? supabase.rpc("opciones_lote_en_super", { p_terminos: libres.map(({ e }) => e.termino), p_dims: libres.map(({ e }) => e.dim), p_super_id: superId })
+      : Promise.resolve({ data: [] }),
   ]);
-  const listaId = sp.lista ?? listas?.[0]?.id;
-  const superId = sp.s;
-  const verTodos = sp.todos === "1";
+  const fijMap = new Map(((fijAca as { producto_id: string; precio_aca: number | null }[] | null) ?? []).map((f) => [f.producto_id, f.precio_aca]));
+  const libMap = new Map(((libAca as Aca[] | null) ?? []).map((a) => [libres[a.orden - 1].e.key, a]));
 
-  let filas: Fila[] = [];
-  if (listaId && superId) {
-    const { data } = await supabase.rpc("comparar_en_super", { p_lista_id: listaId, p_super_id: superId });
-    filas = (data as Fila[] | null) ?? [];
-    // Lugar elegido para cada ítem (dónde lo pensás comprar)
-    const { data: lugares } = await supabase
-      .from("lista_items").select("id, lugar_id, supermercados(nombre)").eq("lista_id", listaId);
-    const porItem = new Map((lugares ?? []).map((l) => [l.id, l]));
-    filas = filas.map((f) => {
-      const l = porItem.get(f.item_id);
-      return { ...f, lugar_id: l?.lugar_id ?? null, lugar: (l?.supermercados as unknown as { nombre: string } | null)?.nombre ?? null };
-    });
-  }
-  // Lista de compras de la caja de Setto (solo lectura)
-  let setto: PendienteConProducto[] | null = null;
-  let settoError: string | null = null;
-  try {
-    setto = await pendientesConAlias(supabase);
-  } catch (e) {
-    settoError = (e as Error).message;
-  }
-  type Comp = { producto_id: string; precio_aca: number | null; mejor_precio: number | null; mejor_super: string | null };
-  const settoComp = new Map<string, Comp>();
-  const settoIds = [...new Set((setto ?? []).map((p) => p.alias?.producto_id).filter((x): x is string => !!x))];
-  if (superId && settoIds.length) {
-    const { data } = await supabase.rpc("comparar_productos", { p_productos: settoIds, p_super_id: superId });
-    for (const c of (data as Comp[] | null) ?? []) settoComp.set(c.producto_id, c);
-  }
-
-  const visibles = verTodos ? filas : filas.filter((f) => f.toca);
-  const conviene = (f: Fila) =>
-    f.lugar_id === superId ||
-    (f.precio_aca != null && (f.mejor_precio == null || Number(f.precio_aca) <= Number(f.mejor_precio)));
-  const comprarAca = visibles.filter(conviene);
-  const enOtro = visibles.filter((f) => !conviene(f));
-  const totalAca = comprarAca.reduce((a, f) => a + Number(f.precio_aca ?? 0) * Number(f.cantidad), 0);
-  const superNombre = supers?.find((s) => s.id === superId)?.nombre;
-  const qs = (extra: Record<string, string>) =>
-    "?" + new URLSearchParams({ ...(listaId ? { lista: listaId } : {}), ...(superId ? { s: superId } : {}), ...extra }).toString();
+  type Fila = { e: Entrada; precio: number | null; nombre: string | null; pu: number | null; dim: string | null; cant: number | null; conviene: boolean };
+  const filas: Fila[] = entradas.map((e) => {
+    let precio: number | null = null, nombre: string | null = null, pu: number | null = null, dim: string | null = null, cant: number | null = null;
+    if (e.producto) {
+      const p = fijMap.get(e.producto.id);
+      precio = p != null ? Number(p) : null; nombre = e.producto.nombre;
+      dim = e.recomendado?.dim ?? null; cant = e.recomendado?.cant ?? null;
+      pu = precio != null && cant ? precio / Number(cant) : null;
+    } else {
+      const a = libMap.get(e.key);
+      if (a) { precio = Number(a.precio); nombre = a.nombre; pu = a.por_unidad != null ? Number(a.por_unidad) : null; dim = a.dim; cant = Number(a.cant_base); }
+    }
+    const mejor = e.recomendado?.porUnidad ?? null;
+    const conviene = e.lugar?.id === superId || (pu != null && (mejor == null || pu <= Number(mejor) * 1.03)) || (precio != null && e.recomendado?.superId === superId);
+    return { e, precio, nombre, pu, dim, cant, conviene };
+  });
+  const aca = filas.filter((f) => f.conviene);
+  const otro = filas.filter((f) => !f.conviene);
+  const total = aca.reduce((t, f) => t + (f.precio ?? 0) * f.e.cantidad, 0);
 
   return (
-    <main className="mx-auto max-w-2xl space-y-5 p-4">
-      <h1 className="text-2xl font-bold">Estoy en el súper</h1>
-
-      <form className="grid grid-cols-2 gap-2">
-        <select name="s" defaultValue={superId ?? ""} required className="rounded border bg-white p-2">
-          <option value="">¿En qué súper estás?</option>
-          {supers?.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-        </select>
-        <select name="lista" defaultValue={listaId ?? ""} className="rounded border bg-white p-2">
-          {listas?.map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
-        </select>
-        <button className="col-span-2 rounded bg-emerald-600 p-2 font-semibold text-white">Ver qué me conviene</button>
-      </form>
-
-      {!listas?.length && <p className="text-neutral-500">Primero creá una lista en <Link href="/" className="underline">Mis listas</Link>.</p>}
-
-      {superId && listaId && (
-        <>
-          <div className="flex items-center justify-between text-sm">
-            <span>{visibles.length} {verTodos ? "productos" : "pendientes"} · {filas.length} en la lista</span>
-            <Link href={qs(verTodos ? {} : { todos: "1" })} className="underline">
-              {verTodos ? "Ver solo lo que toca comprar" : "Ver toda la lista"}
-            </Link>
-          </div>
-
-          <section className="space-y-2">
-            <h2 className="font-semibold text-emerald-700">
-              Comprá acá en {superNombre} · {pesos(totalAca)}
-            </h2>
-            <ul className="divide-y rounded border bg-white text-sm">
-              {comprarAca.map((f) => (
-                <Item key={f.item_id} f={f}>
-                  {f.lugar_id === superId && <span className="mr-1 rounded bg-emerald-100 px-1 text-xs text-emerald-800">Anotado para acá</span>}
-                  <span className="font-semibold">{f.precio_aca != null ? pesos(f.precio_aca) : "sin precio"}</span>
-                  {f.mejor_precio != null && Number(f.mejor_precio) > Number(f.precio_aca) && (
-                    <span className="text-neutral-500"> · {pesos(Number(f.mejor_precio) - Number(f.precio_aca))} menos que {f.mejor_super}</span>
-                  )}
-                  {f.promo_aca && <span className="text-emerald-700"> · {f.promo_aca}</span>}
-                </Item>
-              ))}
-              {!comprarAca.length && <li className="p-3 text-neutral-500">Nada de la lista conviene acá.</li>}
-            </ul>
-          </section>
-
-          {!!enOtro.length && (
-            <section className="space-y-2">
-              <h2 className="font-semibold text-amber-700">Mejor en otro lado</h2>
-              <ul className="divide-y rounded border bg-white text-sm">
-                {enOtro.map((f) => (
-                  <Item key={f.item_id} f={f}>
-                    {f.lugar && <span className="mr-1 rounded bg-neutral-100 px-1 text-xs">Anotado: {f.lugar}</span>}
-                    {f.mejor_precio != null ? (
-                      <>
-                        <span className="font-semibold">{f.mejor_super} {pesos(f.mejor_precio)}</span>
-                        {f.precio_aca != null
-                          ? <span className="text-neutral-500"> · acá {pesos(f.precio_aca)} (+{pesos(Number(f.precio_aca) - Number(f.mejor_precio))})</span>
-                          : <span className="text-neutral-500"> · acá sin precio cargado</span>}
-                      </>
-                    ) : (
-                      <span className="text-neutral-500">Sin precios en ningún súper</span>
-                    )}
-                  </Item>
-                ))}
-              </ul>
-            </section>
-          )}
-        </>
-      )}
-
-      {superId && (setto || settoError) && (
-        <section className="space-y-2">
-          <h2 className="font-semibold">Lista de Setto</h2>
-          {settoError && <p className="text-sm text-red-600">{settoError}</p>}
-          <ul className="divide-y rounded border bg-white text-sm">
-            {[...(setto ?? [])].sort((a, b) => Number(b.lugar?.id === superId) - Number(a.lugar?.id === superId)).map((p) => {
-              const c = p.alias?.producto_id ? settoComp.get(p.alias.producto_id) : undefined;
-              let detalle: React.ReactNode;
-              const aca = p.lugar?.id === superId;
-              if (aca && (!p.alias || !p.alias.producto_id) ) detalle = <span className="font-semibold text-emerald-700">Anotado para comprar acá</span>;
-              else if (!p.alias) detalle = <Link href="/setto" className="text-amber-700 underline">Vincular con un producto</Link>;
-              else if (!p.alias.producto_id) detalle = <span className="text-neutral-500">No está en súpers{p.donde ? ` · ${p.donde}` : ""}</span>;
-              else if (c?.precio_aca != null && (c.mejor_precio == null || Number(c.precio_aca) <= Number(c.mejor_precio)))
-                detalle = <span className="font-semibold text-emerald-700">Comprá acá · {pesos(c.precio_aca)}</span>;
-              else if (c?.mejor_precio != null)
-                detalle = (
-                  <span className="text-amber-700">
-                    Mejor en {c.mejor_super} {pesos(c.mejor_precio)}
-                    {c.precio_aca != null ? ` (acá ${pesos(c.precio_aca)})` : " · acá sin precio"}
-                  </span>
-                );
-              else detalle = <span className="text-neutral-500">Sin precios</span>;
-              return (
-                <li key={p.id} className="p-3">
-                  <p>
-                    {p.urgente && <span className="text-red-600">Urgente · </span>}{p.item}{p.cantidad ? ` · ${p.cantidad}` : ""}
-                    {p.lugar && <span className={`ml-1 rounded px-1 text-xs ${aca ? "bg-emerald-100 text-emerald-800" : "bg-neutral-100"}`}>{aca ? "Anotado para acá" : p.lugar.nombre}</span>}
-                  </p>
-                  <p>{detalle}</p>
-                  {p.alias?.nombre && <p className="text-xs text-neutral-400">{p.alias.nombre}</p>}
-                </li>
-              );
-            })}
-            {setto && !setto.length && <li className="p-3 text-neutral-500">No hay pendientes en la caja.</li>}
-          </ul>
-          <p className="text-xs text-neutral-500">Para tachar estos ítems marcalos como comprados en la caja de Setto.</p>
-        </section>
-      )}
+    <main>
+      <Encabezado titulo={nombreSuper} sub={<>Comprá acá {aca.length} cosas · <span className="num">{pesos(total)}</span></>}>
+        <Link href="/super" className="pb-1 text-sm font-semibold text-marca">Cambiar</Link>
+      </Encabezado>
+      <div className="space-y-6 px-4">
+        <Bloque titulo="Comprá acá" filas={aca} tono="verde" superId={superId} />
+        {!!otro.length && <Bloque titulo="Mejor en otro lado" filas={otro} tono="naranja" superId={superId} />}
+        {!entradas.length && <p className="pt-10 text-center text-suave">Tu lista está vacía.</p>}
+      </div>
     </main>
   );
-}
 
-function Item({ f, children }: { f: Fila; children: React.ReactNode }) {
-  const comprado = !f.toca;
-  return (
-    <li className={`flex items-center justify-between gap-3 p-3 ${comprado ? "opacity-50" : ""}`}>
-      <div>
-        <p>{f.cantidad} × {f.producto}{f.marca ? ` · ${f.marca}` : ""}</p>
-        <p>{children}</p>
-      </div>
-      <form action={marcarComprado}>
-        <input type="hidden" name="id" value={f.item_id} />
-        {comprado && <input type="hidden" name="deshacer" value="1" />}
-        <button className={`rounded px-3 py-2 text-sm font-semibold ${comprado ? "border" : "bg-emerald-600 text-white"}`}>
-          {comprado ? "Deshacer" : "Comprado"}
-        </button>
-      </form>
-    </li>
-  );
+  function Bloque({ titulo, filas, tono, superId }: { titulo: string; filas: Fila[]; tono: "verde" | "naranja"; superId: string }) {
+    return (
+      <section>
+        <h2 className={`mb-2 px-1 text-lg font-bold ${tono === "verde" ? "text-marca" : "text-alerta"}`}>{titulo}</h2>
+        <ul className="divide-y divide-linea overflow-hidden rounded-2xl border border-linea bg-tarjeta">
+          {filas.map(({ e, precio, nombre, pu, dim, cant }) => (
+            <li key={e.key} className="flex items-start gap-3 px-3 py-3">
+              {e.origen === "mio" ? (
+                <form action={marcarComprado} className="pt-0.5">
+                  <input type="hidden" name="id" value={e.itemId} />
+                  <button aria-label="Comprado" className="h-7 w-7 rounded-full border-2 border-linea active:border-marca active:bg-marca-suave" />
+                </form>
+              ) : (
+                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-fondo text-[10px] font-bold text-suave">S</span>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex justify-between gap-2">
+                  <p className="font-semibold leading-snug">
+                    {e.urgente && <span className="text-alerta">● </span>}
+                    {e.cantidad > 1 && <span className="num text-suave">{e.cantidad}× </span>}{e.titulo}
+                  </p>
+                  <span className="num shrink-0 font-semibold">{precio != null ? pesos(precio) : "—"}</span>
+                </div>
+                {nombre && (
+                  <p className="truncate text-sm text-suave">
+                    {nombre !== e.titulo && <>{nombre} · </>}{presentacion(cant, dim) && <>{presentacion(cant, dim)} · </>}
+                    <span className="num">{porUnidad(pu, dim)}</span>
+                  </p>
+                )}
+                {e.lugar?.id === superId && <Pill tono="verde">anotado para acá</Pill>}
+                {tono === "naranja" && e.recomendado && (
+                  <p className="text-sm text-alerta">
+                    {e.recomendado.super}: <span className="num">{pesos(e.recomendado.precio)}</span> · {porUnidad(e.recomendado.porUnidad, e.recomendado.dim)}
+                    {precio == null && " · acá no hay precio"}
+                  </p>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  }
 }

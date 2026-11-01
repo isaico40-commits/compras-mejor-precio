@@ -1,18 +1,24 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { Nav } from "@/components/Nav";
+import { BottomNav } from "@/components/BottomNav";
 
 export const metadata: Metadata = {
-  title: "Compras al mejor precio",
-  description: "Tu lista de compras frecuentes y dónde te conviene comprar cada cosa en Mar del Plata.",
+  title: "Compras",
+  description: "Tu lista de compras y dónde te conviene comprar cada cosa en Mar del Plata.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#f5f5f0",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
-      <body className="min-h-screen bg-neutral-50 text-neutral-900 antialiased">
-        <Nav />
-        {children}
+      <body className="min-h-dvh font-sans antialiased">
+        <div className="mx-auto max-w-xl pb-24">{children}</div>
+        <BottomNav />
       </body>
     </html>
   );
