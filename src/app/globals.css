@@ -4,10 +4,21 @@
   --color-fondo: #f5f5f0;
   --color-tarjeta: #ffffff;
   --color-tinta: #1d1f1c;
-  --color-suave: #6b6f68;
+  --color-suave: #5f645c;
   --color-linea: #e6e6df;
   --color-marca: #1f7a4d;
-  --color-marca-suave: #e5f2ea;
+  --color-marca-suave: #e3f3ea;
+  /* Pasteles para jerarquía: fondo claro + tinta del mismo tono para títulos */
+  --color-menta: #e3f3ea;
+  --color-menta-tinta: #1f6b45;
+  --color-cielo: #e4eefb;
+  --color-cielo-tinta: #2b5c8f;
+  --color-lila: #eee8fa;
+  --color-lila-tinta: #5a4794;
+  --color-durazno: #fdebdf;
+  --color-durazno-tinta: #9a4d1f;
+  --color-limon: #faf3d4;
+  --color-limon-tinta: #75600f;
   --color-alerta: #b45309;
   --color-alerta-suave: #fdf3e3;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;

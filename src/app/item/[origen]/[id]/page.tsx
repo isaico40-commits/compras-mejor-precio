@@ -3,10 +3,10 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { pendientesConAlias, limpiarItem } from "@/lib/setto";
 import { pesos, porUnidad, presentacion } from "@/lib/formato";
-import { guardarItem, borrarItem, guardarSetto, guardarHabitual } from "@/app/actions";
+import { guardarItem, borrarItem, guardarSetto, guardarHabitual, guardarPagado } from "@/app/actions";
 import { detectarRubro, esRubro, nombreRubro, RUBROS, type Rubro } from "@/lib/rubros";
 import { claveCompra } from "@/lib/lista";
-import { Encabezado, Pill, Tarjeta, inputCls, btnCls, btnSecCls } from "@/components/ui";
+import { Encabezado, Pill, Tarjeta, Titulo, ayudaCls, inputCls, btnCls, btnSecCls, btnSobre } from "@/components/ui";
 import type { Opcion } from "@/lib/lista";
 import { NuevoLugar } from "@/components/FormPrecio";
 
@@ -72,84 +72,107 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
         <Tarjeta className="p-4">
           <form action={guardar} className="space-y-2">
             {ocultos}
-            <label className="block text-sm font-semibold">Nombre</label>
+            <Titulo>Nombre</Titulo>
             <div className="flex gap-2">
               <input name="nombre" defaultValue={titulo} className={inputCls} />
               <button className={btnSecCls}>Guardar</button>
             </div>
-            {!esMio && <p className="text-xs text-suave">Solo cambia acá. En la caja de Setto sigue como lo escribiste.</p>}
+            {!esMio && <p className={ayudaCls}>Solo cambia acá. En la caja de Setto sigue como lo escribiste.</p>}
           </form>
         </Tarjeta>
 
-        <Tarjeta className="p-4">
+        <Tarjeta tono="lila" className="p-4">
           <form action={guardar} className="space-y-2">
             {ocultos}
-            <label className="block text-sm font-semibold">Qué es</label>
+            <Titulo tono="lila">Qué es</Titulo>
             <div className="flex gap-2">
               <select name="rubro" defaultValue={rubroElegido ?? ""} className={inputCls}>
                 <option value="">Automático ({nombreRubro(rubroAuto)})</option>
                 {RUBROS.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
               </select>
-              <button className={btnSecCls}>Guardar</button>
+              <button className={btnSobre("lila")}>Guardar</button>
             </div>
-            <p className="text-xs text-suave">{enSuper ? "Se compara con los precios de los súpers." : "No se compara con los súpers: te muestro lo último que pagaste."}</p>
+            <p className={ayudaCls}>{enSuper ? "Se compara con los precios de los súpers." : "No se compara con los súpers: te muestro lo último que pagaste."}</p>
           </form>
         </Tarjeta>
 
         {!enSuper && (
-          <Tarjeta className="p-4">
-            <h2 className="mb-2 font-bold">Lo que pagaste</h2>
+          <>
+          <Tarjeta tono="menta" className="p-4">
+            <Titulo tono="menta" className="mb-2">Lo que pagaste</Titulo>
             {historial.length ? (
-              <ul className="divide-y divide-linea text-sm">
+              <ul className="divide-y divide-menta-tinta/15 text-[15px]">
                 {historial.map((h, i) => (
-                  <li key={i} className="flex justify-between py-1.5">
+                  <li key={i} className="flex justify-between py-2">
                     <span>{h.fecha.split("-").reverse().slice(0, 2).join("/")}{(h.supermercados as { nombre: string } | null)?.nombre ? ` · ${(h.supermercados as { nombre: string }).nombre}` : ""}</span>
                     <span className="num font-semibold">{h.precio != null ? pesos(Number(h.precio)) : "—"}</span>
                   </li>
                 ))}
               </ul>
-            ) : <p className="text-sm text-suave">Todavía nada. Cuando lo marques comprado te pregunto el precio y queda acá.</p>}
-            <form action={guardarHabitual} className="mt-4 space-y-2 border-t border-linea pt-3">
+            ) : <p className={ayudaCls}>Todavía nada. Cargalo acá o cuando lo marques comprado te pregunto el precio.</p>}
+            <form action={guardarPagado} className="mt-3 space-y-2 border-t border-menta-tinta/15 pt-3">
+              <input type="hidden" name="nombre" value={titulo} />
+              <input type="hidden" name="clave" value={claveCompra(termino || titulo)} />
+              <input type="hidden" name="volver_a" value={`/item/${origen}/${id}`} />
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-sm font-semibold text-menta-tinta">Precio
+                  <input name="precio" type="number" inputMode="decimal" min="1" step="any" required placeholder="$" className={`${inputCls} mt-1`} />
+                </label>
+                <label className="text-sm font-semibold text-menta-tinta">Dónde
+                  <select name="lugar_id" defaultValue={habitualId} className={`${inputCls} mt-1`}>
+                    <option value="">Sin lugar</option>
+                    {lugares?.map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
+                  </select>
+                </label>
+              </div>
+              <button className={`${btnSobre("menta")} w-full`}>Cargar lo que pagué</button>
+            </form>
+          </Tarjeta>
+          <Tarjeta tono="cielo" className="p-4">
+            <form action={guardarHabitual} className="space-y-2">
               <input type="hidden" name="rubro" value={rubro} />
               <input type="hidden" name="volver_a" value={`/item/${origen}/${id}`} />
-              <label className="block text-sm font-semibold">Tu {rubro === "otro" ? "comercio" : nombreRubro(rubro).toLowerCase()} de siempre
-                <select name="lugar_id" defaultValue={habitualId} className={`${inputCls} mt-1`}>
+              <Titulo tono="cielo">Tu {rubro === "otro" ? "comercio" : nombreRubro(rubro).toLowerCase()} de siempre</Titulo>
+              <p className={ayudaCls}>Solo el lugar. El precio va en “Lo que pagaste”.</p>
+              <label className="block">
+                <select name="lugar_id" defaultValue={habitualId} className={inputCls} aria-label="Lugar de siempre">
                   <option value="">Ninguna en particular</option>
                   {lugares?.map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
                 </select>
               </label>
               <NuevoLugar />
-              <button className={`${btnSecCls} w-full`}>Guardar</button>
-              <p className="text-xs text-suave">Todo lo de {nombreRubro(rubro).toLowerCase()} va a ese lugar en la lista, salvo lo que anotes en otro.</p>
+              <button className={`${btnSobre("cielo")} w-full`}>Guardar lugar</button>
+              <p className={ayudaCls}>Todo lo de {nombreRubro(rubro).toLowerCase()} va a ese lugar en la lista, salvo lo que anotes en otro.</p>
             </form>
           </Tarjeta>
+          </>
         )}
 
         {enSuper && <Tarjeta className="p-4">
           <form action={guardar} className="space-y-2">
             {ocultos}
-            <label className="block text-sm font-semibold">Buscar como</label>
+            <Titulo>Buscar como</Titulo>
             <div className="flex gap-2">
               <input name="termino" defaultValue={termino} className={inputCls} />
               <button className={btnSecCls}>Buscar</button>
             </div>
-            <p className="text-xs text-suave">Usá palabras genéricas: “azucar comun”, “leche entera”, “crema de leche”.</p>
+            <p className={ayudaCls}>Usá palabras genéricas: “azucar comun”, “leche entera”, “crema de leche”.</p>
           </form>
         </Tarjeta>}
 
         <Link
           href={`/precios?nuevo=${encodeURIComponent(titulo)}&item=${origen}:${id}${texto ? `&texto=${encodeURIComponent(texto)}` : ""}`}
-          className="flex items-center justify-between rounded-2xl border border-linea bg-tarjeta px-4 py-3 active:bg-fondo"
+          className="flex items-center justify-between rounded-2xl bg-durazno px-4 py-3 active:opacity-80"
         >
           <span>
-            <span className="block font-semibold">Cargar mi precio</span>
-            <span className="text-sm text-suave">Si lo comprás en un lugar que no está (papelera, almacén…)</span>
+            <span className="block text-[15px] font-bold text-durazno-tinta">Cargar mi precio</span>
+            <span className={ayudaCls}>Si lo comprás en un lugar que no está (papelera, almacén…)</span>
           </span>
           <svg viewBox="0 0 24 24" className="h-4 w-4 text-suave" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" /></svg>
         </Link>
 
         {enSuper && <section>
-          <h2 className="mb-2 px-1 font-bold">Opciones más baratas por {dim === "l" ? "litro" : dim === "u" ? "unidad" : "kilo"}</h2>
+          <h2 className="mb-2 px-1 text-[15px] font-bold">Opciones más baratas por {dim === "l" ? "litro" : dim === "u" ? "unidad" : "kilo"}</h2>
           {productoId && (
             <div className="mb-2 flex items-center justify-between rounded-2xl bg-marca-suave px-4 py-3 text-sm">
               <span>Fijado: <b>{productoNombre}</b></span>
@@ -165,20 +188,20 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
               <li key={o.producto_id} className="flex items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="text-[15px] leading-snug">{o.nombre}</p>
-                  <p className="text-sm text-suave">
+                  <p className={ayudaCls}>
                     {o.supermercado}{presentacion(o.cant_base, o.dim) && ` · ${presentacion(o.cant_base, o.dim)}`}
                     {i === 0 && <span className="ml-1"><Pill tono="verde">más barato</Pill></span>}
                   </p>
                 </div>
                 <div className="text-right">
                   <p className="num font-semibold">{pesos(o.precio)}</p>
-                  <p className="num text-xs text-suave">{porUnidad(o.por_unidad, o.dim)}</p>
+                  <p className="num text-sm text-suave">{porUnidad(o.por_unidad, o.dim)}</p>
                 </div>
                 {o.producto_id !== productoId && (
                   <form action={guardar}>
                     {ocultos}
                     <input type="hidden" name="producto_id" value={o.producto_id} />
-                    <button className="rounded-lg border border-linea px-2 py-1 text-xs font-semibold">Fijar</button>
+                    <button className="rounded-lg bg-menta px-2.5 py-1 text-sm font-semibold text-menta-tinta">Fijar</button>
                   </form>
                 )}
               </li>
@@ -188,19 +211,19 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
         </section>}
 
         {esMio && (
-          <Tarjeta className="p-4">
+          <Tarjeta tono="cielo" className="p-4">
             <form action={guardarItem} className="space-y-3">
               <input type="hidden" name="id" value={id} />
               <input type="hidden" name="volver" value="1" />
               <div className="grid grid-cols-2 gap-3">
-                <label className="text-sm font-semibold">Cantidad
+                <label className="text-[15px] font-bold text-cielo-tinta">Cantidad
                   <input name="cantidad" type="number" step="any" min="0.01" defaultValue={cantidad} className={`${inputCls} mt-1`} />
                 </label>
-                <label className="text-sm font-semibold">Cada cuántos días
+                <label className="text-[15px] font-bold text-cielo-tinta">Cada cuántos días
                   <input name="frecuencia_dias" type="number" min="1" defaultValue={frecuencia ?? ""} placeholder="—" className={`${inputCls} mt-1`} />
                 </label>
               </div>
-              <label className="block text-sm font-semibold">Dónde lo comprás
+              <label className="block text-[15px] font-bold text-cielo-tinta">Dónde lo comprás
                 <select name="lugar_id" defaultValue={lugarId ?? ""} className={`${inputCls} mt-1`}>
                   <option value="">{enSuper ? "Donde esté más barato" : "Donde compro siempre"}</option>
                   {lugares?.map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
@@ -216,11 +239,11 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
           </Tarjeta>
         )}
         {!esMio && (
-          <Tarjeta className="p-4">
+          <Tarjeta tono="cielo" className="p-4">
             <form action={guardarSetto} className="space-y-3">
               {ocultos}
               <input type="hidden" name="volver" value="1" />
-              <label className="block text-sm font-semibold">Dónde lo comprás
+              <label className="block text-[15px] font-bold text-cielo-tinta">Dónde lo comprás
                 <select name="lugar_id" defaultValue={lugarSetto ?? ""} className={`${inputCls} mt-1`}>
                   <option value="">{enSuper ? "Donde esté más barato" : "Donde compro siempre"}</option>
                   {lugares?.map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}

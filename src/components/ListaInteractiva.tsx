@@ -7,6 +7,15 @@ import { Fila } from "@/components/FilaLista";
 import { ConfirmarCompra, type ParaConfirmar } from "@/components/ConfirmarCompra";
 import { quitarItems, lugarItems, rubroItems, type ItemLote } from "@/app/actions";
 import { RUBROS, type Rubro } from "@/lib/rubros";
+import { tintaTono, type Tono } from "@/components/ui";
+
+// Color del grupo según qué es: súper, verdulería, bazar, otro comercio
+const tonoGrupo = (g: Grupo): Tono | null => {
+  if (g.id === "analizando" || g.id === "sin-precio") return null;
+  const r = g.entradas[0]?.rubro;
+  return r === "verduleria" ? "menta" : r === "bazar" ? "lila" : r === "otro" ? "durazno" : "cielo";
+};
+const fondo: Record<Tono, string> = { blanco: "bg-tarjeta", menta: "bg-menta", cielo: "bg-cielo", lila: "bg-lila", durazno: "bg-durazno", limon: "bg-limon" };
 
 const fmt = (n: number) => "$" + Math.round(n).toLocaleString("es-AR");
 
@@ -44,25 +53,25 @@ export function ListaInteractiva({ grupos, supers }: { grupos: Grupo[]; supers: 
     <>
       {aviso && <p className="mt-3 rounded-xl bg-marca-suave p-3 text-sm text-marca" onClick={() => setAviso(null)}>{aviso}</p>}
 
-      <div className="mt-5 space-y-6">
+      <div className="mt-5 space-y-4">
         {grupos.map((g) => (
-          <section key={g.id}>
-            <div className="mb-2 flex items-baseline justify-between px-1">
-              <h2 className={`text-lg font-bold ${g.id === "analizando" ? "text-suave" : ""}`}>
+          <section key={g.id} className="overflow-hidden rounded-2xl border border-linea bg-tarjeta">
+            <div className={`flex items-baseline justify-between px-3 py-2.5 ${(() => { const t = tonoGrupo(g); return t ? `${fondo[t]} ${tintaTono[t]}` : "bg-fondo text-suave"; })()}`}>
+              <h2 className="text-lg font-bold">
                 {g.nombre}
-                {g.anotado && <span className="ml-2 inline-flex items-center rounded-full bg-fondo px-2 py-0.5 align-middle text-[11px] font-semibold text-suave">anotado</span>}
+                {g.anotado && <span className="ml-2 inline-flex items-center rounded-full bg-white/70 px-2 py-0.5 align-middle text-[11px] font-semibold">anotado</span>}
               </h2>
               <span className="flex items-baseline gap-3">
-                {g.total > 0 && <span className="num text-sm font-semibold text-suave">{fmt(g.total)}</span>}
+                {g.total > 0 && <span className="num text-[15px] font-bold">{fmt(g.total)}</span>}
                 <button
                   onClick={() => { const s = new Set(sel); const todos = g.entradas.every((e) => s.has(e.key)); g.entradas.forEach((e) => (todos ? s.delete(e.key) : s.add(e.key))); setSel(s); }}
-                  className="text-xs font-semibold text-marca"
+                  className="text-sm font-semibold underline-offset-2 opacity-80"
                 >
                   {g.entradas.every((e) => sel.has(e.key)) ? "Ninguno" : "Todos"}
                 </button>
               </span>
             </div>
-            <ul className="divide-y divide-linea overflow-hidden rounded-2xl border border-linea bg-tarjeta">
+            <ul className="divide-y divide-linea">
               {g.entradas.map((e) => (
                 <Fila key={e.key} e={e} grupoId={g.id} sel={sel.has(e.key)} seleccionando={sel.size > 0} onToggle={() => toggle(e.key)} />
               ))}

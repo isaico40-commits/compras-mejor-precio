@@ -62,7 +62,7 @@ export function Changuito({ superId, bloques, promo }: { superId: string; bloque
     <>
       {confirmando && <ConfirmarCompra items={confirmando} superId={superId} onCerrar={() => setConfirmando(null)} onListo={listo} />}
       {fin && (
-        <div className="rounded-2xl bg-marca-suave p-4 text-marca">
+        <div className="rounded-2xl bg-menta p-4 text-menta-tinta">
           <p className="font-bold">Compra terminada: {fin.n} cosas · <span className="num">{fmt(fin.total)}</span></p>
           <p className="text-sm">Lo de tu lista quedó tachado y lo de Setto marcado como comprado en la caja.</p>
           {fin.aviso && <p className="mt-1 text-sm text-alerta">{fin.aviso}</p>}
@@ -70,9 +70,9 @@ export function Changuito({ superId, bloques, promo }: { superId: string; bloque
       )}
 
       {bloques.filter((b) => b.filas.length).map((b) => (
-        <section key={b.titulo}>
-          <h2 className={`mb-2 px-1 text-lg font-bold ${b.tono === "verde" ? "text-marca" : "text-alerta"}`}>{b.titulo}</h2>
-          <ul className="divide-y divide-linea overflow-hidden rounded-2xl border border-linea bg-tarjeta">
+        <section key={b.titulo} className="overflow-hidden rounded-2xl border border-linea bg-tarjeta">
+          <h2 className={`px-3 py-2.5 text-lg font-bold ${b.tono === "verde" ? "bg-menta text-menta-tinta" : "bg-durazno text-durazno-tinta"}`}>{b.titulo}</h2>
+          <ul className="divide-y divide-linea">
             {b.filas.map((f) => {
               const on = tildados.has(f.key);
               return (
@@ -106,9 +106,9 @@ export function Changuito({ superId, bloques, promo }: { superId: string; bloque
         <div className="fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-10 px-4">
           <div className="mx-auto flex max-w-xl items-center justify-between gap-3 rounded-2xl bg-tinta px-4 py-3 text-white shadow-lg">
             <span>
-              <span className="block text-xs opacity-75">En el changuito: {enCarro.length}{sinPrecio ? ` (${sinPrecio} sin precio)` : ""}</span>
+              <span className="block text-sm opacity-75">En el changuito: {enCarro.length}{sinPrecio ? ` (${sinPrecio} sin precio)` : ""}</span>
               <span className="num text-lg font-bold">{fmt(total - ahorro)}</span>
-              {ahorro > 0 && <span className="block text-xs opacity-75">con {promo!.medio}: −{fmt(ahorro)}</span>}
+              {ahorro > 0 && <span className="block text-sm opacity-75">con {promo!.medio}: −{fmt(ahorro)}</span>}
             </span>
             <button onClick={terminar} className="rounded-xl bg-marca px-4 py-2.5 font-semibold">Terminar compra</button>
           </div>

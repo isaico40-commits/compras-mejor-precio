@@ -47,7 +47,7 @@ export default async function EditarPrecioPage({ params }: { params: Promise<{ i
           <input type="hidden" name="id" value={p.id} />
           <button className={`${btnSecCls} w-full text-red-600`}>Borrar este precio</button>
         </form>
-        {!propio && <p className="px-1 text-xs text-suave">El nombre y la medida vienen del catálogo de los súpers y no se pueden cambiar.</p>}
+        {!propio && <p className="px-1 text-sm text-suave">El nombre y la medida vienen del catálogo de los súpers y no se pueden cambiar.</p>}
       </div>
     </main>
   );

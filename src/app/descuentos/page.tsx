@@ -45,7 +45,7 @@ export default async function DescuentosPage({ searchParams }: { searchParams: P
                   {ORDEN.map((d) => (
                     <label key={d} className="cursor-pointer">
                       <input type="checkbox" name="dias" value={d} defaultChecked={editando?.dias.includes(d)} className="peer sr-only" />
-                      <span className="block rounded-lg border border-linea bg-tarjeta py-2 text-center text-xs font-semibold peer-checked:border-marca peer-checked:bg-marca-suave peer-checked:text-marca">
+                      <span className="block rounded-lg border border-linea bg-tarjeta py-2 text-center text-sm font-semibold peer-checked:border-marca peer-checked:bg-marca-suave peer-checked:text-marca">
                         {DIAS[d].slice(0, 2)}
                       </span>
                     </label>
@@ -111,7 +111,7 @@ export default async function DescuentosPage({ searchParams }: { searchParams: P
             </section>
           );
         })}
-        <p className="px-1 text-xs text-suave">
+        <p className="px-1 text-sm text-suave">
           Los de Mercado Pago salen de la guía de noviembre 2026 de calcularsueldo.com.ar (sin topes publicados). Revisá las condiciones en la app antes de pagar.
           No encontré promos vigentes de BBVA, Santander, Brubank ni MODO para noviembre: cargalas acá cuando las veas.
         </p>
@@ -127,8 +127,8 @@ function FilaDescuento({ d }: { d: Descuento }) {
         <span className="min-w-0">
           <span className="block font-semibold">{d.super}</span>
           <span className="block text-sm text-suave">{textoDescuento(d)}{d.minimo ? ` · mínimo $${Math.round(d.minimo).toLocaleString("es-AR")}` : ""}</span>
-          {d.detalle && <span className="block text-xs text-suave">{d.detalle}</span>}
-          <span className="block text-xs text-suave">
+          {d.detalle && <span className="block text-sm text-suave">{d.detalle}</span>}
+          <span className="block text-sm text-suave">
             {d.fuente === "manual" ? "Cargado por vos" : "De internet"}
             {d.verificado && ` · revisado ${d.verificado.split("-").reverse().slice(0, 2).join("/")}`}
             {d.hasta && ` · hasta ${d.hasta.split("-").reverse().slice(0, 2).join("/")}`}

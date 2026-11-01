@@ -177,7 +177,7 @@ export default async function PreciosPage({
             })}
             {!cargados?.length && <li className="px-4 py-6 text-center text-sm text-suave">Todavía no cargaste precios.</li>}
           </ul>
-          <p className="mt-2 px-1 text-xs text-suave">Los precios de los súpers grandes se actualizan solos todos los días desde Precios Claros.</p>
+          <p className="mt-2 px-1 text-sm text-suave">Los precios de los súpers grandes se actualizan solos todos los días desde Precios Claros.</p>
         </section>}
       </div>
     </main>
