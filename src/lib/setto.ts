@@ -29,7 +29,12 @@ export async function leerPendientesSetto(supabase: SupabaseClient): Promise<Pen
   if (!integ?.setto_url || !integ.setto_key || !integ.setto_token) return null;
   const res = await fetch(`${integ.setto_url}/rest/v1/rpc/compras_pendientes`, {
     method: "POST",
-    headers: { apikey: integ.setto_key, Authorization: `Bearer ${integ.setto_key}`, "Content-Type": "application/json" },
+    // Las claves nuevas (sb_publishable_...) van solo en "apikey"; las JWT viejas también como Bearer.
+    headers: {
+      apikey: integ.setto_key,
+      "Content-Type": "application/json",
+      ...(integ.setto_key.startsWith("sb_") ? {} : { Authorization: `Bearer ${integ.setto_key}` }),
+    },
     body: JSON.stringify({ p_token: integ.setto_token }),
     cache: "no-store",
   });
