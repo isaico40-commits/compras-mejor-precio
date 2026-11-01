@@ -17,7 +17,7 @@ async function resolverLugar(supabase: Awaited<ReturnType<typeof createClient>>,
     if (/^[\s$]*\d/.test(nuevo) || !/[a-záéíóúñ]{3,}/i.test(nuevo.replace(/\b(kg|kgs|gr|grs|lt|lts|ml|un|unidades?|kilos?|litros?|pesos?)\b/gi, ""))) {
       throw new Error(`"${nuevo}" parece un precio o una cantidad, no el nombre de un lugar.`);
     }
-    const { data: existe } = await supabase.from("supermercados").select("id").ilike("nombre", nuevo).limit(1).maybeSingle();
+    const { data: existe } = await supabase.from("supermercados").select("id").eq("oculto", false).ilike("nombre", nuevo).limit(1).maybeSingle();
     if (existe) return existe.id as string;
     const { data, error } = await supabase.from("supermercados").insert({ nombre: nuevo }).select("id").single();
     if (error) throw new Error(error.message);
@@ -519,4 +519,18 @@ export async function guardarPagado(form: FormData) {
   revalidatePath("/");
   const volver = txt(form.get("volver_a"));
   if (volver?.startsWith("/item/")) revalidatePath(volver);
+}
+
+/** Borra (oculta) un lugar cargado a mano por error. Solo si no tiene precios ni descuentos. */
+export async function borrarLugar(id: string): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("ocultar_lugar", { p_id: id });
+  if (error) return { error: error.message.includes("precios") ? "Ese lugar tiene precios o descuentos cargados, así que no se puede borrar." : error.message };
+  await Promise.all([
+    supabase.from("rubros_habituales").delete().eq("lugar_id", id),
+    supabase.from("lista_items").update({ lugar_id: null }).eq("lugar_id", id),
+    supabase.from("alias_productos").update({ lugar_id: null }).eq("lugar_id", id),
+  ]);
+  revalidatePath("/", "layout");
+  return { error: null };
 }

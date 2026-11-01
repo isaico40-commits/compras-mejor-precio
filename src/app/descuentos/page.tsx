@@ -13,7 +13,7 @@ export default async function DescuentosPage({ searchParams }: { searchParams: P
   const supabase = await createClient();
   const [descuentos, { data: supers }] = await Promise.all([
     leerDescuentos(supabase),
-    supabase.from("supermercados").select("id, nombre").order("nombre"),
+    supabase.from("supermercados").select("id, nombre").eq("oculto", false).order("nombre"),
   ]);
   const { dia } = hoyAR();
   const editando = sp.editar ? descuentos.find((d) => d.id === sp.editar) ?? null : null;

@@ -113,7 +113,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
       ? supabase.rpc("leer_sugerencias", { p_terminos: entradas.map((e) => e.termino), p_dims: entradas.map((e) => e.dim) })
       : Promise.resolve({ data: [] }),
     idsFijos.length ? supabase.rpc("comparar_productos", { p_productos: idsFijos, p_super_id: null }) : Promise.resolve({ data: [] }),
-    supabase.from("supermercados").select("id, nombre"),
+    supabase.from("supermercados").select("id, nombre").eq("oculto", false),
     idsFijos.length
       ? supabase.from("precios").select("producto_id, supermercado_id, precio, precio_promo").in("producto_id", idsFijos)
           .gte("fecha", hace30).order("fecha", { ascending: false }).order("created_at", { ascending: false }).limit(3000)

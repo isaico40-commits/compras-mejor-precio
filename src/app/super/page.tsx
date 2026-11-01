@@ -24,7 +24,7 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
   const superId = (await searchParams).s;
   const supabase = await createClient();
   const [{ data: supers }, descuentos] = await Promise.all([
-    supabase.from("supermercados").select("id, nombre").order("nombre"),
+    supabase.from("supermercados").select("id, nombre").eq("oculto", false).order("nombre"),
     leerDescuentos(supabase).catch(() => []),
   ]);
   const { dia } = hoyAR();

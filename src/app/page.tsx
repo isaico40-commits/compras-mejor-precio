@@ -17,7 +17,7 @@ export default async function Home() {
   const promosHoy = descuentos.filter((d) => d.dias.includes(dia));
   const [recompra, { data: supers }] = await Promise.all([
     sugerirRecompra(supabase, entradas.map((e) => e.termino)).catch(() => []),
-    supabase.from("supermercados").select("id, nombre").order("nombre"),
+    supabase.from("supermercados").select("id, nombre").eq("oculto", false).order("nombre"),
   ]);
   const total = grupos.reduce((a, g) => a + g.total, 0);
   const lugares = grupos.filter((g) => g.id !== "sin-precio" && g.id !== "analizando").length;

@@ -55,7 +55,7 @@ export async function pendientesConAlias(supabase: SupabaseClient): Promise<Pend
   const [{ data: integ }, { data: alias }, { data: lugares }] = await Promise.all([
     supabase.from("integraciones").select("setto_url, setto_key, setto_token").maybeSingle(),
     supabase.from("alias_productos").select("texto, producto_id, termino, nombre, lugar_id, rubro, productos(nombre, dim, cant_base)"),
-    supabase.from("supermercados").select("id, nombre"),
+    supabase.from("supermercados").select("id, nombre").eq("oculto", false),
   ]);
   const pendientes = await fetchSetto(integ);
   if (!pendientes) return null;
