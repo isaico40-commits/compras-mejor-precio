@@ -316,7 +316,7 @@ export async function borrarPrecio(form: FormData) {
 export async function analizarPendientes(terminos: string[], dims: (string | null)[]) {
   if (!terminos.length) return 0;
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("analizar_terminos", { p_terminos: terminos.slice(0, 40), p_dims: dims.slice(0, 40) });
+  const { data, error } = await supabase.rpc("analizar_terminos2", { p_terminos: terminos.slice(0, 40), p_dims: dims.slice(0, 40) });
   if (error) throw new Error(error.message);
   return data as number;
 }

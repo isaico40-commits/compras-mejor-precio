@@ -71,7 +71,7 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
   const [{ data: fijAca }, { data: libAca }] = await Promise.all([
     fijados.length ? supabase.rpc("comparar_productos", { p_productos: fijados.map((e) => e.producto!.id), p_super_id: superId }) : Promise.resolve({ data: [] }),
     libres.length
-      ? supabase.rpc("opciones_lote_en_super", { p_terminos: libres.map(({ e }) => e.termino), p_dims: libres.map(({ e }) => e.dim), p_super_id: superId })
+      ? supabase.rpc("opciones_lote_en_super2", { p_terminos: libres.map(({ e }) => e.termino), p_dims: libres.map(({ e }) => e.dim), p_super_id: superId })
       : Promise.resolve({ data: [] }),
   ]);
   const fijMap = new Map(((fijAca as { producto_id: string; precio_aca: number | null }[] | null) ?? []).map((f) => [f.producto_id, f.precio_aca]));
