@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { marcarEnSetto } from "@/lib/setto";
+import { marcarEnSetto, actualizarEnSetto, agregarEnSetto } from "@/lib/setto";
 
 const num = (v: FormDataEntryValue | null) => (v === null || v === "" ? null : Number(v));
 const txt = (v: FormDataEntryValue | null) => (v === null || v === "" ? null : String(v).trim());
@@ -143,9 +143,15 @@ async function idListaPorDefecto(supabase: Awaited<ReturnType<typeof createClien
 /** Agrega un ítem genérico ("Azúcar") o un producto puntual a la lista. */
 export async function agregarALista(form: FormData) {
   const supabase = await createClient();
-  const listaId = await idListaPorDefecto(supabase);
   const productoId = txt(form.get("producto_id"));
   const nombre = txt(form.get("nombre"));
+  // Una sola lista: lo que se agrega por nombre va a la caja de Setto (sin duplicar)
+  if (!productoId && nombre) {
+    const cant = num(form.get("cantidad"));
+    const id = await agregarEnSetto(supabase, nombre, cant && cant > 1 ? String(cant) : null).catch(() => null);
+    if (id) { revalidatePath("/"); return; }
+  }
+  const listaId = await idListaPorDefecto(supabase);
   const fila = {
     lista_id: listaId,
     producto_id: productoId,
@@ -315,7 +321,11 @@ export async function analizarPendientes(terminos: string[], dims: (string | nul
   return data as number;
 }
 
-export type ItemCarrito = { origen: "mio" | "setto"; itemId: string; titulo: string; termino: string; productoId: string | null; precio: number | null };
+export type ItemCarrito = {
+  origen: "mio" | "setto"; itemId: string; titulo: string; termino: string; productoId: string | null;
+  precio: number | null;      // precio unitario confirmado al comprar
+  texto?: string;             // clave del alias (ítems de Setto)
+};
 
 /** Fin de la compra en el súper: guarda el historial, tacha lo propio y marca lo de Setto en la caja. */
 export async function terminarCompra(superId: string, items: ItemCarrito[]) {
@@ -337,6 +347,14 @@ export async function terminarCompra(superId: string, items: ItemCarrito[]) {
   ]);
   if (hist.error) throw new Error(hist.error.message);
   if (propios.error) throw new Error(propios.error.message);
+
+  // El precio que confirmaste al comprar queda como precio real de ese súper
+  const reales = items.filter((i) => esUuid && i.productoId && i.precio && i.precio > 0);
+  if (reales.length) {
+    await supabase.from("precios").insert(reales.map((i) => ({
+      producto_id: i.productoId, supermercado_id: superId, precio: i.precio, fecha: hoy, promo_detalle: "Confirmado al comprar",
+    })));
+  }
 
   let settoError: string | null = null;
   try { await marcarEnSetto(supabase, setto); } catch (e) { settoError = (e as Error).message; }
@@ -389,4 +407,39 @@ export async function borrarDescuento(form: FormData) {
   revalidatePath("/descuentos");
   revalidatePath("/");
   redirect("/descuentos");
+}
+
+export type ItemLote = { origen: "mio" | "setto"; itemId: string; texto?: string };
+
+/** Quitar varios ítems de la lista (los de Setto quedan como "quitada" en la caja) */
+export async function quitarItems(items: ItemLote[]) {
+  const supabase = await createClient();
+  const mios = items.filter((i) => i.origen === "mio").map((i) => i.itemId);
+  const setto = items.filter((i) => i.origen === "setto").map((i) => i.itemId);
+  if (mios.length) await supabase.from("lista_items").delete().in("id", mios);
+  let settoError: string | null = null;
+  try { await actualizarEnSetto(supabase, setto, "quitada"); } catch (e) { settoError = (e as Error).message; }
+  revalidatePath("/");
+  return { settoError };
+}
+
+/** Anotar varios ítems para comprar en un lugar (vacío = donde esté más barato) */
+export async function lugarItems(items: ItemLote[], lugarId: string | null, nuevoLugar: string | null) {
+  const supabase = await createClient();
+  const fd = new FormData();
+  if (nuevoLugar) fd.set("nuevo_lugar", nuevoLugar);
+  if (lugarId) fd.set("lugar_id", lugarId);
+  const id = await resolverLugar(supabase, fd, "lugar_id");
+  const mios = items.filter((i) => i.origen === "mio").map((i) => i.itemId);
+  if (mios.length) await supabase.from("lista_items").update({ lugar_id: id }).in("id", mios);
+  const setto = items.filter((i) => i.origen === "setto" && i.texto);
+  if (setto.length) {
+    const { data: actuales } = await supabase.from("alias_productos").select("texto, producto_id, nombre, termino").in("texto", setto.map((i) => i.texto!));
+    const porTexto = new Map((actuales ?? []).map((a) => [a.texto, a]));
+    await supabase.from("alias_productos").upsert(
+      setto.map((i) => ({ ...(porTexto.get(i.texto!) ?? { producto_id: null, nombre: null, termino: null }), texto: i.texto!, lugar_id: id })),
+      { onConflict: "user_id,texto" },
+    );
+  }
+  revalidatePath("/");
 }

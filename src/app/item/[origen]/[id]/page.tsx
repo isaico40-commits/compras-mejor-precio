@@ -174,7 +174,7 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
             </form>
           </Tarjeta>
         )}
-        {!esMio && <p className="px-1 text-sm text-suave">Para tachar este ítem marcalo como comprado en la caja de Setto.</p>}
+        {!esMio && <p className="px-1 text-sm text-suave">Este ítem vive en la caja de Setto: si lo marcás comprado o lo quitás desde la lista, se actualiza allá también.</p>}
       </div>
     </main>
   );

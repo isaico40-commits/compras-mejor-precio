@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { terminarCompra, type ItemCarrito } from "@/app/actions";
+import { ConfirmarCompra, type ParaConfirmar } from "@/components/ConfirmarCompra";
 
 export type FilaSuper = {
   key: string; origen: "mio" | "setto"; itemId: string; titulo: string; termino: string; productoId: string | null;
@@ -21,7 +21,7 @@ export function Changuito({ superId, bloques, promo }: { superId: string; bloque
   const hoy = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
   const claveLS = `changuito:${superId}:${hoy}`;
   const [tildados, setTildados] = useState<Set<string>>(new Set());
-  const [pendiente, start] = useTransition();
+  const [confirmando, setConfirmando] = useState<ParaConfirmar[] | null>(null);
   const [fin, setFin] = useState<{ total: number; n: number; aviso: string | null } | null>(null);
 
   useEffect(() => {
@@ -44,20 +44,23 @@ export function Changuito({ superId, bloques, promo }: { superId: string; bloque
     ? Math.min((total * promo.porcentaje) / 100, promo.tope ?? Infinity) : 0;
   const sinPrecio = enCarro.filter((f) => f.precio == null).length;
 
-  const terminar = () => start(async () => {
-    const items: ItemCarrito[] = enCarro.map((f) => ({
-      origen: f.origen, itemId: f.itemId, titulo: f.titulo, termino: f.termino, productoId: f.productoId,
-      precio: f.precio != null ? f.precio / f.cantidad : null,
-    }));
-    const r = await terminarCompra(superId, items);
+  // "Terminar compra" primero pregunta si los precios estaban bien
+  const terminar = () => setConfirmando(enCarro.map((f) => ({
+    key: f.key, cantidad: f.cantidad,
+    item: { origen: f.origen, itemId: f.itemId, titulo: f.titulo, termino: f.termino, productoId: f.productoId, precio: f.precio != null ? f.precio / f.cantidad : null },
+  })));
+  const listo = (r: { total: number; n: number; settoError: string | null }) => {
     try { localStorage.removeItem(claveLS); } catch {}
-    setFin({ total: total - ahorro, n: items.length, aviso: r.settoError });
+    const desc = promo && (!promo.minimo || r.total >= promo.minimo) ? Math.min((r.total * promo.porcentaje) / 100, promo.tope ?? Infinity) : 0;
+    setFin({ total: r.total - desc, n: r.n, aviso: r.settoError });
+    setConfirmando(null);
     setTildados(new Set());
     router.refresh();
-  });
+  };
 
   return (
     <>
+      {confirmando && <ConfirmarCompra items={confirmando} superId={superId} onCerrar={() => setConfirmando(null)} onListo={listo} />}
       {fin && (
         <div className="rounded-2xl bg-marca-suave p-4 text-marca">
           <p className="font-bold">Compra terminada: {fin.n} cosas · <span className="num">{fmt(fin.total)}</span></p>
@@ -107,9 +110,7 @@ export function Changuito({ superId, bloques, promo }: { superId: string; bloque
               <span className="num text-lg font-bold">{fmt(total - ahorro)}</span>
               {ahorro > 0 && <span className="block text-xs opacity-75">con {promo!.medio}: −{fmt(ahorro)}</span>}
             </span>
-            <button onClick={terminar} disabled={pendiente} className="rounded-xl bg-marca px-4 py-2.5 font-semibold disabled:opacity-60">
-              {pendiente ? "Guardando…" : "Terminar compra"}
-            </button>
+            <button onClick={terminar} className="rounded-xl bg-marca px-4 py-2.5 font-semibold">Terminar compra</button>
           </div>
         </div>
       )}

@@ -86,21 +86,32 @@ export async function pendientesConAlias(supabase: SupabaseClient): Promise<Pend
   });
 }
 
-/** Marca como comprados en la caja de Setto los ítems tildados (autorizado por Isaias el 2026-11-01). */
-export async function marcarEnSetto(supabase: SupabaseClient, ids: string[]) {
-  if (!ids.length) return 0;
+/** Llama una función de escritura de Setto (autorizadas por Isaias el 2026-11-01). Devuelve null si no hay integración. */
+async function rpcSetto<T>(supabase: SupabaseClient, fn: string, args: Record<string, unknown>): Promise<T | null> {
   const { data: integ } = await supabase.from("integraciones").select("setto_url, setto_key, setto_token").maybeSingle();
-  if (!integ?.setto_url || !integ.setto_key || !integ.setto_token) return 0;
-  const res = await fetch(`${integ.setto_url}/rest/v1/rpc/marcar_compras`, {
+  if (!integ?.setto_url || !integ.setto_key || !integ.setto_token) return null;
+  const res = await fetch(`${integ.setto_url}/rest/v1/rpc/${fn}`, {
     method: "POST",
     headers: {
       apikey: integ.setto_key,
       "Content-Type": "application/json",
       ...(integ.setto_key.startsWith("sb_") ? {} : { Authorization: `Bearer ${integ.setto_key}` }),
     },
-    body: JSON.stringify({ p_token: integ.setto_token, p_ids: ids }),
+    body: JSON.stringify({ p_token: integ.setto_token, ...args }),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`No pude marcar en Setto (${res.status})`);
-  return Number(await res.json());
+  if (!res.ok) throw new Error(`Setto respondió ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
+/** Comprado o quitado en la caja de Setto */
+export async function actualizarEnSetto(supabase: SupabaseClient, ids: string[], estado: "comprado" | "quitada") {
+  if (!ids.length) return 0;
+  return Number((await rpcSetto<number>(supabase, "actualizar_compras", { p_ids: ids, p_estado: estado })) ?? 0);
+}
+export const marcarEnSetto = (supabase: SupabaseClient, ids: string[]) => actualizarEnSetto(supabase, ids, "comprado");
+
+/** Agrega a la caja de Setto (si ya hay uno pendiente con el mismo nombre, no duplica). null = no hay integración. */
+export async function agregarEnSetto(supabase: SupabaseClient, item: string, cantidad: string | null = null) {
+  return rpcSetto<string>(supabase, "agregar_compra", { p_item: item, p_cantidad: cantidad });
 }
