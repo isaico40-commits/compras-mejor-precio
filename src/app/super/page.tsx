@@ -50,11 +50,14 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
   const nombreSuper = supers?.find((s) => s.id === superId)?.nombre ?? "";
   const promoHoy = mejorDescuento(descuentos, superId, dia);
   const otrosDias = descuentos.filter((d) => d.supermercado_id === superId && !d.dias.includes(dia));
-  const [{ entradas }, { data: opsRaw }, { data: historial }] = await Promise.all([
+  const [{ entradas: todas }, { data: opsRaw }, { data: historial }] = await Promise.all([
     armarLista(supabase),
     supabase.rpc("oportunidades_en_super", { p_super: superId }),
     supabase.from("sugerencias").select("termino").limit(300),
   ]);
+
+  // Verdulería / bazar / otros: solo aparecen si los anotaste para este lugar
+  const entradas = todas.filter((e) => e.rubro === "super" || e.lugar?.id === superId);
 
   // Oportunidades: lo que acá está más barato que en todos los demás súpers.
   // Primero lo que solés comprar (tu lista + lo que buscaste antes), después el resto.

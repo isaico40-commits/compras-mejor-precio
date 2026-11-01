@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { pendientesConAlias } from "@/lib/setto";
 import { presentacion } from "@/lib/formato";
+import { detectarRubro, esRubro, RUBROS, type Rubro } from "@/lib/rubros";
 import { leerDescuentos, mejorDescuento, hoyAR, textoDescuento, type Descuento } from "@/lib/descuentos";
 
 export type Opcion = {
@@ -30,6 +31,9 @@ export type Entrada = {
   analizando: boolean;
   recomendado: { superId: string; super: string; precio: number | null; nombre: string; porUnidad: number | null; dim: string | null; cant: number | null } | null;
   consejo: string | null;
+  rubro: Rubro;
+  rubroAuto: boolean;   // detectado por el nombre (no elegido)
+  ultimoPago: { precio: number | null; fecha: string; lugar: string | null } | null;
 };
 
 /** Cuánto sale todo en un solo súper vs. dividir la compra en dos. */
@@ -41,6 +45,9 @@ export type PlanViaje = {
 
 export type Grupo = { id: string; nombre: string; entradas: Entrada[]; total: number; anotado: boolean };
 
+/** Misma clave que guarda el historial de compras ("Azúcar  común" -> "azucar comun") */
+export const claveCompra = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+
 const VIGENCIA_MS = 12 * 3600_000;
 const dosPalabras = (s: string | null | undefined) =>
   (s ?? "").split(" ").filter((w) => w.length > 2).slice(0, 2).join(" ");
@@ -51,7 +58,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
   const [{ data: items }, settoRes] = await Promise.all([
     supabase
       .from("lista_items")
-      .select("id, nombre, termino, cantidad, frecuencia_dias, ultima_compra, lugar_id, supermercados(id, nombre), productos(id, nombre, nombre_base, dim, cant_base)")
+      .select("id, nombre, termino, cantidad, frecuencia_dias, ultima_compra, lugar_id, rubro, supermercados(id, nombre), productos(id, nombre, nombre_base, dim, cant_base)")
       .order("created_at"),
     pendientesConAlias(supabase).then((r) => ({ data: r, error: null as string | null })).catch((e: Error) => ({ data: null, error: e.message })),
   ]);
@@ -64,7 +71,9 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
     return prox.toISOString().slice(0, 10) <= hoy;
   };
 
-  const base = { analizando: false, recomendado: null, consejo: null };
+  const base = { analizando: false, recomendado: null, consejo: null, ultimoPago: null };
+  const rubroDe = (elegido: unknown, nombre: string) =>
+    esRubro(elegido) ? { rubro: elegido, rubroAuto: false } : { rubro: detectarRubro(nombre), rubroAuto: true };
   const entradas: Entrada[] = [];
   for (const i of items ?? []) {
     if (!opts.incluirComprados && !toca(i.ultima_compra, i.frecuencia_dias)) continue;
@@ -78,6 +87,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
       dim: p?.dim ?? null,
       producto: p ? { id: p.id, nombre: p.nombre, cant_base: p.cant_base, dim: p.dim } : null,
       lugar: l, ultimaCompra: i.ultima_compra, frecuencia: i.frecuencia_dias,
+      ...rubroDe(i.rubro, i.nombre ?? p?.nombre ?? ""),
     });
   }
   for (const s of settoRes.data ?? []) {
@@ -89,13 +99,16 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
       dim: a?.dim ?? null,
       producto: a?.producto_id ? { id: a.producto_id, nombre: a.nombre ?? "", cant_base: a.cant, dim: a.dim } : null,
       lugar: s.lugar, ultimaCompra: null, frecuencia: null,
+      ...rubroDe(a?.rubro, a?.nombreItem || s.item),
     });
   }
 
   // Análisis guardados (1 consulta) + mejor precio de los productos fijados (si hay)
   const idsFijos = [...new Set(entradas.map((e) => e.producto?.id).filter((x): x is string => !!x))];
   const hace30 = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
-  const [{ data: guardados }, { data: fijos }, { data: supers }, { data: fijosPorSuper }, descuentos] = await Promise.all([
+  const fuera = entradas.filter((e) => e.rubro !== "super");
+  const claves = [...new Set(fuera.map((e) => claveCompra(e.termino || e.titulo)))];
+  const [{ data: guardados }, { data: fijos }, { data: supers }, { data: fijosPorSuper }, descuentos, { data: habituales }, { data: pagos }] = await Promise.all([
     entradas.length
       ? supabase.rpc("leer_sugerencias", { p_terminos: entradas.map((e) => e.termino), p_dims: entradas.map((e) => e.dim) })
       : Promise.resolve({ data: [] }),
@@ -106,7 +119,18 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
           .gte("fecha", hace30).order("fecha", { ascending: false }).order("created_at", { ascending: false }).limit(3000)
       : Promise.resolve({ data: [] }),
     leerDescuentos(supabase).catch(() => [] as Descuento[]),
+    fuera.length ? supabase.from("rubros_habituales").select("rubro, lugar_id, supermercados(id, nombre)") : Promise.resolve({ data: [] }),
+    claves.length
+      ? supabase.from("compras_historial").select("clave, precio, fecha, supermercados(nombre)").in("clave", claves).order("fecha", { ascending: false }).limit(500)
+      : Promise.resolve({ data: [] }),
   ]);
+  const habitual = new Map(((habituales as { rubro: string; supermercados: unknown }[] | null) ?? [])
+    .map((h) => [h.rubro, h.supermercados as { id: string; nombre: string } | null] as const));
+  const ultimoPago = new Map<string, Entrada["ultimoPago"]>();
+  for (const p of (pagos as { clave: string; precio: number | null; fecha: string; supermercados: unknown }[] | null) ?? []) {
+    if (ultimoPago.has(p.clave)) continue;
+    ultimoPago.set(p.clave, { precio: p.precio != null ? Number(p.precio) : null, fecha: p.fecha, lugar: (p.supermercados as { nombre: string } | null)?.nombre ?? null });
+  }
   // Último precio de cada producto fijado en cada súper
   const fijoSuper = new Map<string, Map<string, number>>();
   for (const r of (fijosPorSuper as { producto_id: string; supermercado_id: string; precio: number; precio_promo: number | null }[] | null) ?? []) {
@@ -123,6 +147,17 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
 
   const porAnalizar: { termino: string; dim: string | null }[] = [];
   entradas.forEach((e, idx) => {
+    // Verdulería, bazar, otros: no se compara con los súpers. Último precio que pagaste (o el que cargaste para ese lugar).
+    if (e.rubro !== "super") {
+      if (!e.lugar) { const h = habitual.get(e.rubro); if (h) e.lugar = h; }
+      e.ultimoPago = ultimoPago.get(claveCompra(e.termino || e.titulo)) ?? null;
+      const cargado = e.producto && e.lugar ? fijoSuper.get(e.producto.id)?.get(e.lugar.id) : undefined;
+      const precio = cargado ?? e.ultimoPago?.precio ?? null;
+      if (precio != null) {
+        e.recomendado = { superId: e.lugar?.id ?? `rubro-${e.rubro}`, super: e.lugar?.nombre ?? "", precio, nombre: e.titulo, porUnidad: null, dim: null, cant: null };
+      }
+      return;
+    }
     const g = analisis.get(idx);
     if (!g || !g.resultado?.por_super || g.resultado?.v !== 2 || Date.now() - new Date(g.calculado_at).getTime() > VIGENCIA_MS) {
       porAnalizar.push({ termino: e.termino, dim: e.dim });
@@ -161,6 +196,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
     if (e.recomendado && !e.recomendado.superId) e.recomendado.superId = superPorNombre.get(e.recomendado.super) ?? e.recomendado.super;
     let id: string, nombre: string, anotado = false;
     if (e.lugar) { id = e.lugar.id; nombre = e.lugar.nombre; anotado = true; }
+    else if (e.rubro !== "super") { id = `rubro-${e.rubro}`; nombre = RUBROS.find((r) => r.id === e.rubro)!.grupo; }
     else if (e.recomendado) { id = e.recomendado.superId; nombre = e.recomendado.super; }
     else if (e.analizando) { id = "analizando"; nombre = "Buscando el mejor precio…"; }
     else { id = "sin-precio"; nombre = "Sin precio todavía"; }
@@ -175,7 +211,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
 
   // Plan del viaje: precio de cada ítem (sin lugar anotado) en cada súper
   const nombreSuper = new Map((supers ?? []).map((x) => [x.id as string, x.nombre as string]));
-  const precios = entradas.filter((e) => !e.lugar).map((e) => {
+  const precios = entradas.filter((e) => !e.lugar && e.rubro === "super").map((e) => {
     const idx = entradas.indexOf(e);
     const m = new Map<string, number>();
     if (e.producto) fijoSuper.get(e.producto.id)?.forEach((p, sid) => m.set(sid, p * e.cantidad));

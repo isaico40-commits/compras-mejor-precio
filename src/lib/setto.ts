@@ -9,7 +9,7 @@ export type PendienteSetto = {
 export type PendienteConProducto = PendienteSetto & {
   texto: string;                       // clave del alias
   busqueda: string;                    // texto limpio para buscar en el catálogo
-  alias: { producto_id: string | null; nombre: string | null; dim: string | null; cant: number | null; termino: string | null; nombreItem: string | null; lugarId?: string | null } | undefined;
+  alias: { producto_id: string | null; nombre: string | null; dim: string | null; cant: number | null; termino: string | null; nombreItem: string | null; lugarId?: string | null; rubro?: string | null } | undefined;
   lugar: { id: string; nombre: string } | null;   // donde (o lugar mencionado en el texto) -> súper/lugar de la app
 };
 
@@ -54,7 +54,7 @@ export async function pendientesConAlias(supabase: SupabaseClient): Promise<Pend
   // Todo en paralelo: integración, alias y lugares
   const [{ data: integ }, { data: alias }, { data: lugares }] = await Promise.all([
     supabase.from("integraciones").select("setto_url, setto_key, setto_token").maybeSingle(),
-    supabase.from("alias_productos").select("texto, producto_id, termino, nombre, lugar_id, productos(nombre, dim, cant_base)"),
+    supabase.from("alias_productos").select("texto, producto_id, termino, nombre, lugar_id, rubro, productos(nombre, dim, cant_base)"),
     supabase.from("supermercados").select("id, nombre"),
   ]);
   const pendientes = await fetchSetto(integ);
@@ -69,7 +69,7 @@ export async function pendientesConAlias(supabase: SupabaseClient): Promise<Pend
   const mapa = new Map(
     (alias ?? []).map((a) => {
       const prod = a.productos as unknown as { nombre: string; dim: string | null; cant_base: number | null } | null;
-      return [a.texto, { producto_id: a.producto_id, nombre: prod?.nombre ?? null, dim: prod?.dim ?? null, cant: prod?.cant_base ?? null, termino: a.termino, nombreItem: a.nombre, lugarId: a.lugar_id as string | null }];
+      return [a.texto, { producto_id: a.producto_id, nombre: prod?.nombre ?? null, dim: prod?.dim ?? null, cant: prod?.cant_base ?? null, termino: a.termino, nombreItem: a.nombre, lugarId: a.lugar_id as string | null, rubro: a.rubro as string | null }];
     }),
   );
   return pendientes.map((p) => {
