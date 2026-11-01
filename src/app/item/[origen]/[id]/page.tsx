@@ -37,7 +37,7 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
   }
 
   const [{ data: ops }, { data: lugares }] = await Promise.all([
-    supabase.rpc("opciones_termino", { p_termino: termino, p_dim: dim, p_limite: 10 }),
+    supabase.rpc("opciones_termino2", { p_termino: termino, p_dim: dim, p_limite: 10 }),
     supabase.from("supermercados").select("id, nombre").order("nombre"),
   ]);
   const opciones = (ops as Opcion[] | null) ?? [];

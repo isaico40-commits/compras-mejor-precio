@@ -10,7 +10,7 @@ export type Opcion = {
 
 /** Opción guardada en el análisis (tabla sugerencias) */
 type OpcionGuardada = { producto_id: string; nombre: string; super_id: string; super: string; precio: number; cant: number; pu: number | null };
-type Analisis = { dim: string | null; n: number; mediana: number | null; chica: number | null; opciones: OpcionGuardada[]; por_super?: Record<string, { precio: number; pu: number | null }> };
+type Analisis = { dim: string | null; n: number; mediana: number | null; chica: number | null; opciones: OpcionGuardada[]; por_super?: Record<string, { precio: number; pu: number | null }>; v?: number };
 
 export type Entrada = {
   key: string;
@@ -124,7 +124,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
   const porAnalizar: { termino: string; dim: string | null }[] = [];
   entradas.forEach((e, idx) => {
     const g = analisis.get(idx);
-    if (!g || !g.resultado?.por_super || Date.now() - new Date(g.calculado_at).getTime() > VIGENCIA_MS) {
+    if (!g || !g.resultado?.por_super || g.resultado?.v !== 2 || Date.now() - new Date(g.calculado_at).getTime() > VIGENCIA_MS) {
       porAnalizar.push({ termino: e.termino, dim: e.dim });
       if (!g) e.analizando = true;
     }
