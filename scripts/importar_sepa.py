@@ -103,8 +103,8 @@ def zips_de_comercios(ruta: str):
         if n.endswith(".zip"):
             try:
                 yield zipfile.ZipFile(io.BytesIO(externo.read(n)))
-            except zipfile.BadZipFile:
-                print(f"  ZIP interno dañado: {n}", file=sys.stderr)
+            except zipfile.BadZipFile as e:
+                print(f"  ZIP interno dañado: {n} ({e})", flush=True)
 
 
 def buscar(zf: zipfile.ZipFile, archivo: str) -> str | None:
@@ -123,13 +123,20 @@ def procesar(ruta: str) -> list[dict]:
                       for s in leer_csv(zf, f_suc) if es_mar_del_plata(s)}
         if not sucursales:
             continue
-        print(f"  {', '.join(sorted({banderas.get(k[:2], k[0]) for k in sucursales}))}: {len(sucursales)} sucursales en MdP")
+        print(f"  {', '.join(sorted({banderas.get(k[:2], k[0]) for k in sucursales}))}: {len(sucursales)} sucursales en MdP", flush=True)
+        vistos = 0
         for p in leer_csv(zf, f_prod):
-            if (p["id_comercio"], p["id_bandera"], p["id_sucursal"]) not in sucursales:
+            if (p.get("id_comercio"), p.get("id_bandera"), p.get("id_sucursal")) not in sucursales:
                 continue
+            # En SEPA "productos_ean" suele ser un indicador (1/0) y el código de barras está en id_producto
             ean = re.sub(r"\D", "", p.get("productos_ean") or "")
+            if not 8 <= len(ean) <= 14:
+                ean = re.sub(r"\D", "", p.get("id_producto") or "")
+            vistos += 1
             precio = num(p.get("productos_precio_lista"))
-            if len(ean) < 8 or not precio:
+            if not 8 <= len(ean) <= 14 or not precio:
+                if vistos <= 2:
+                    print(f"    fila descartada (ejemplo): {p}", flush=True)
                 continue
             promos = [(num(p.get(f"productos_precio_unitario_promo{i}")), p.get(f"productos_leyenda_promo{i}") or None) for i in (1, 2)]
             promos = [x for x in promos if x[0] and x[0] < precio]
@@ -148,6 +155,7 @@ def procesar(ruta: str) -> list[dict]:
                 "unidad": (p.get("productos_unidad_medida_presentacion") or "").lower() or None,
                 "precio": round(precio, 2), "promo": round(promo, 2) if promo else None, "leyenda": leyenda,
             }
+        print(f"    {vistos} filas de precios en MdP, acumulado {len(mejores)} productos por cadena", flush=True)
     return list(mejores.values())
 
 
