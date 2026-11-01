@@ -36,9 +36,9 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
         <ul className="grid grid-cols-2 gap-2 px-4">
           {supers?.map((s) => (
             <li key={s.id}>
-              <Link href={`/super?s=${s.id}`} className="block rounded-2xl border border-linea bg-tarjeta px-4 py-4 font-semibold active:bg-marca-suave">
+              <Link href={`/super?s=${s.id}`} className="block rounded-2xl bg-cielo px-4 py-4 font-semibold text-cielo-tinta active:opacity-80">
                 {s.nombre}
-                {(() => { const d = mejorDescuento(descuentos, s.id, dia); return d ? <span className="mt-1 block text-xs font-semibold text-marca">Hoy −{d.porcentaje}% {d.medio}</span> : null; })()}
+                {(() => { const d = mejorDescuento(descuentos, s.id, dia); return d ? <span className="mt-1 block text-sm font-semibold text-marca">Hoy −{d.porcentaje}% {d.medio}</span> : null; })()}
               </Link>
             </li>
           ))}
@@ -107,11 +107,11 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
       </Encabezado>
       <div className="space-y-6 px-4 pb-20">
         {promoHoy ? (
-          <p className="rounded-2xl bg-marca-suave px-4 py-3 text-sm text-marca">
-            <b>Hoy: {textoDescuento(promoHoy)}</b>{promoHoy.detalle && <span className="block text-xs">{promoHoy.detalle}</span>}
+          <p className="rounded-2xl bg-limon px-4 py-3 text-sm text-limon-tinta">
+            <b>Hoy: {textoDescuento(promoHoy)}</b>{promoHoy.detalle && <span className="block text-sm">{promoHoy.detalle}</span>}
           </p>
         ) : otrosDias.length > 0 && (
-          <p className="rounded-2xl bg-alerta-suave px-4 py-3 text-sm text-alerta">
+          <p className="rounded-2xl bg-durazno px-4 py-3 text-sm text-durazno-tinta">
             Hoy no hay descuento acá. {otrosDias.map((d) => `${d.dias.map((x) => DIAS[x]).join(", ")}: ${textoDescuento(d)}`).join(" · ")}
           </p>
         )}
@@ -126,7 +126,7 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
             <p className="mb-2 px-1 text-sm text-suave">Más baratos en {nombreSuper} que en cualquier otro súper.</p>
             {opsTuyas.length > 0 && (
               <>
-                <p className="mb-1.5 mt-3 px-1 text-xs font-bold uppercase tracking-wide text-marca">De lo que solés comprar</p>
+                <p className="mb-1.5 mt-3 px-1 text-[15px] font-bold text-lila-tinta">De lo que solés comprar</p>
                 <ListaOps ops={opsTuyas} />
               </>
             )}

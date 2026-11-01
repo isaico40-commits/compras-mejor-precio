@@ -15,7 +15,7 @@ export function RegistrarSW() {
   }, []);
   if (!offline) return null;
   return (
-    <div className="sticky top-0 z-30 bg-alerta px-4 py-1.5 text-center text-xs font-semibold text-white">
+    <div className="sticky top-0 z-30 bg-alerta px-4 py-1.5 text-center text-sm font-semibold text-white">
       Sin señal: estás viendo la última lista guardada
     </div>
   );

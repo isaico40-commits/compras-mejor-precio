@@ -13,6 +13,10 @@ const txt = (v: FormDataEntryValue | null) => (v === null || v === "" ? null : S
 async function resolverLugar(supabase: Awaited<ReturnType<typeof createClient>>, form: FormData, campo = "supermercado_id") {
   const nuevo = txt(form.get("nuevo_lugar"))?.replace(/\s+/g, " ");
   if (nuevo) {
+    // "4000 kg", "$3500", "2 un" no son lugares: seguramente era un precio o una cantidad
+    if (/^[\s$]*\d/.test(nuevo) || !/[a-záéíóúñ]{3,}/i.test(nuevo.replace(/\b(kg|kgs|gr|grs|lt|lts|ml|un|unidades?|kilos?|litros?|pesos?)\b/gi, ""))) {
+      throw new Error(`"${nuevo}" parece un precio o una cantidad, no el nombre de un lugar.`);
+    }
     const { data: existe } = await supabase.from("supermercados").select("id").ilike("nombre", nuevo).limit(1).maybeSingle();
     if (existe) return existe.id as string;
     const { data, error } = await supabase.from("supermercados").insert({ nombre: nuevo }).select("id").single();
@@ -495,6 +499,24 @@ export async function guardarHabitual(form: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/");
   revalidatePath("/super");
+  const volver = txt(form.get("volver_a"));
+  if (volver?.startsWith("/item/")) revalidatePath(volver);
+}
+
+/** Precio pagado cargado a mano (ítems de verdulería, bazar u otros comercios). */
+export async function guardarPagado(form: FormData) {
+  const supabase = await createClient();
+  const precio = num(form.get("precio"));
+  if (!precio || precio <= 0) throw new Error("Poné el precio");
+  const nombre = String(form.get("nombre") ?? "").trim();
+  const clave = String(form.get("clave") ?? "").trim();
+  const lugarId = await resolverLugar(supabase, form, "lugar_id");
+  const hoy = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+  const { error } = await supabase.from("compras_historial").insert({
+    clave, nombre, precio, supermercado_id: lugarId, fecha: txt(form.get("fecha")) ?? hoy, origen: "manual",
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/");
   const volver = txt(form.get("volver_a"));
   if (volver?.startsWith("/item/")) revalidatePath(volver);
 }

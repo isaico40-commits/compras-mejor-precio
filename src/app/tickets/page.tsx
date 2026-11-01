@@ -46,7 +46,7 @@ export default async function TicketsPage() {
             </ul>
           </section>
         )}
-        <p className="px-1 text-xs text-suave">Las fotos quedan guardadas acá como respaldo. Para que las cargue a tus precios, mandámelas también por el chat de Claude.</p>
+        <p className="px-1 text-sm text-suave">Las fotos quedan guardadas acá como respaldo. Para que las cargue a tus precios, mandámelas también por el chat de Claude.</p>
       </div>
     </main>
   );

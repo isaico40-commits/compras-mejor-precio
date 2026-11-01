@@ -73,6 +73,12 @@ export function CamposPrecio({
 /** Campo para escribir un lugar que no está en la lista (papelera, almacén, etc.). Si se completa, manda sobre el selector. */
 export function NuevoLugar() {
   return (
-    <input name="nuevo_lugar" placeholder="¿No está? Escribí el lugar (ej: Papelera Roland)" className={inputCls} />
+    <label className="block text-sm text-suave">¿No está en la lista? Escribí el nombre del comercio
+      <input
+        name="nuevo_lugar" placeholder="Ej: Verdulería Don Pepe" autoComplete="off"
+        pattern="[^0-9$].*[A-Za-zÁÉÍÓÚáéíóúÑñ]{3,}.*" title="Escribí el nombre del lugar, no un precio ni una cantidad"
+        className={`${inputCls} mt-1`}
+      />
+    </label>
   );
 }

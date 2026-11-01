@@ -136,11 +136,11 @@ export default async function ListaPage({
                 <form action={cambiarLugar} className="flex items-center gap-1">
                   <input type="hidden" name="id" value={i.id} />
                   <input type="hidden" name="lista_id" value={id} />
-                  <select name="lugar_id" defaultValue={i.lugar_id ?? ""} className="max-w-32 rounded border p-1 text-xs" title="Dónde lo comprás">
+                  <select name="lugar_id" defaultValue={i.lugar_id ?? ""} className="max-w-32 rounded border p-1 text-sm" title="Dónde lo comprás">
                     <option value="">Dónde: cualquiera</option>
                     {lugares?.map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
                   </select>
-                  <button className="rounded border px-2 py-1 text-xs">OK</button>
+                  <button className="rounded border px-2 py-1 text-sm">OK</button>
                 </form>
                 <form action={quitarItem}>
                   <input type="hidden" name="id" value={i.id} />

@@ -30,7 +30,7 @@ export function Fila({ e, grupoId, sel, seleccionando, onToggle }: {
           {r?.precio != null && !enOtroLado && (
             <span className="shrink-0 text-right">
               <span className="num block font-semibold">{pesos(r.precio * e.cantidad)}</span>
-              <span className="num block text-xs text-suave">
+              <span className="num block text-sm text-suave">
                 {e.cantidad > 1 ? `${e.cantidad} × ${pesos(r.precio)}` : porUnidad(r.porUnidad, r.dim)}
               </span>
             </span>
