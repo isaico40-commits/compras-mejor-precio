@@ -85,3 +85,22 @@ export async function marcarComprado(form: FormData) {
     .eq("id", String(form.get("id")));
   revalidatePath("/super");
 }
+
+export async function vincularAlias(form: FormData) {
+  const supabase = await createClient();
+  const producto = String(form.get("producto_id") ?? "");
+  const { error } = await supabase.from("alias_productos").upsert(
+    { texto: String(form.get("texto")), producto_id: producto || null },
+    { onConflict: "user_id,texto" },
+  );
+  if (error) throw new Error(error.message);
+  revalidatePath("/setto");
+  revalidatePath("/super");
+}
+
+export async function desvincularAlias(form: FormData) {
+  const supabase = await createClient();
+  await supabase.from("alias_productos").delete().eq("texto", String(form.get("texto")));
+  revalidatePath("/setto");
+  revalidatePath("/super");
+}

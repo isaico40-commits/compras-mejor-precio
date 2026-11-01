@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { pesos } from "@/lib/formato";
 import { marcarComprado } from "@/app/actions";
+import { pendientesConAlias, type PendienteConProducto } from "@/lib/setto";
 
 type Fila = {
   item_id: string; producto: string; marca: string | null; cantidad: number;
@@ -28,6 +29,22 @@ export default async function SuperPage({
     const { data } = await supabase.rpc("comparar_en_super", { p_lista_id: listaId, p_super_id: superId });
     filas = (data as Fila[] | null) ?? [];
   }
+  // Lista de compras de la caja de Setto (solo lectura)
+  let setto: PendienteConProducto[] | null = null;
+  let settoError: string | null = null;
+  try {
+    setto = await pendientesConAlias(supabase);
+  } catch (e) {
+    settoError = (e as Error).message;
+  }
+  type Comp = { producto_id: string; precio_aca: number | null; mejor_precio: number | null; mejor_super: string | null };
+  const settoComp = new Map<string, Comp>();
+  const settoIds = [...new Set((setto ?? []).map((p) => p.alias?.producto_id).filter((x): x is string => !!x))];
+  if (superId && settoIds.length) {
+    const { data } = await supabase.rpc("comparar_productos", { p_productos: settoIds, p_super_id: superId });
+    for (const c of (data as Comp[] | null) ?? []) settoComp.set(c.producto_id, c);
+  }
+
   const visibles = verTodos ? filas : filas.filter((f) => f.toca);
   const conviene = (f: Fila) =>
     f.precio_aca != null && (f.mejor_precio == null || Number(f.precio_aca) <= Number(f.mejor_precio));
@@ -104,6 +121,40 @@ export default async function SuperPage({
             </section>
           )}
         </>
+      )}
+
+      {superId && (setto || settoError) && (
+        <section className="space-y-2">
+          <h2 className="font-semibold">Lista de Setto</h2>
+          {settoError && <p className="text-sm text-red-600">{settoError}</p>}
+          <ul className="divide-y rounded border bg-white text-sm">
+            {setto?.map((p) => {
+              const c = p.alias?.producto_id ? settoComp.get(p.alias.producto_id) : undefined;
+              let detalle: React.ReactNode;
+              if (!p.alias) detalle = <Link href="/setto" className="text-amber-700 underline">Vincular con un producto</Link>;
+              else if (!p.alias.producto_id) detalle = <span className="text-neutral-500">No está en súpers{p.donde ? ` · ${p.donde}` : ""}</span>;
+              else if (c?.precio_aca != null && (c.mejor_precio == null || Number(c.precio_aca) <= Number(c.mejor_precio)))
+                detalle = <span className="font-semibold text-emerald-700">Comprá acá · {pesos(c.precio_aca)}</span>;
+              else if (c?.mejor_precio != null)
+                detalle = (
+                  <span className="text-amber-700">
+                    Mejor en {c.mejor_super} {pesos(c.mejor_precio)}
+                    {c.precio_aca != null ? ` (acá ${pesos(c.precio_aca)})` : " · acá sin precio"}
+                  </span>
+                );
+              else detalle = <span className="text-neutral-500">Sin precios</span>;
+              return (
+                <li key={p.id} className="p-3">
+                  <p>{p.urgente && <span className="text-red-600">Urgente · </span>}{p.item}{p.cantidad ? ` · ${p.cantidad}` : ""}</p>
+                  <p>{detalle}</p>
+                  {p.alias?.nombre && <p className="text-xs text-neutral-400">{p.alias.nombre}</p>}
+                </li>
+              );
+            })}
+            {setto && !setto.length && <li className="p-3 text-neutral-500">No hay pendientes en la caja.</li>}
+          </ul>
+          <p className="text-xs text-neutral-500">Para tachar estos ítems marcalos como comprados en la caja de Setto.</p>
+        </section>
       )}
     </main>
   );
