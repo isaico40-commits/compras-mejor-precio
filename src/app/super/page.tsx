@@ -1,9 +1,21 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { armarLista, type Entrada } from "@/lib/lista";
-import { pesos, porUnidad, presentacion } from "@/lib/formato";
+import { pesos, porUnidad, presentacion, normalizar } from "@/lib/formato";
 import { marcarComprado } from "@/app/actions";
 import { Encabezado, Pill } from "@/components/ui";
+
+type Oportunidad = {
+  producto_id: string; nombre: string; base: string | null; dim: string | null; cant: number | null;
+  precio: number; promo: boolean; siguiente: number; super_sig: string; n: number; ahorro: number;
+};
+
+/** "leches enteras" -> regex que encuentra "leche entera" (palabras sueltas, singular o plural) */
+function patron(termino: string) {
+  const ws = normalizar(termino).replace(/[^a-z0-9 ]/g, " ").split(" ").filter((w) => w.length > 2)
+    .map((w) => (w.length > 4 && w.endsWith("es") ? w.slice(0, -2) : w.length > 3 && w.endsWith("s") ? w.slice(0, -1) : w));
+  return ws.length ? ws.map((w) => new RegExp(`\\b${w}`)) : null;
+}
 
 type Aca = { orden: number; producto_id: string; nombre: string; dim: string; cant_base: number; precio: number; por_unidad: number | null };
 
@@ -30,7 +42,20 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
   }
 
   const nombreSuper = supers?.find((s) => s.id === superId)?.nombre ?? "";
-  const { entradas } = await armarLista(supabase);
+  const [{ entradas }, { data: opsRaw }, { data: historial }] = await Promise.all([
+    armarLista(supabase),
+    supabase.rpc("oportunidades_en_super", { p_super: superId }),
+    supabase.from("sugerencias").select("termino").limit(300),
+  ]);
+
+  // Oportunidades: lo que acá está más barato que en todos los demás súpers.
+  // Primero lo que solés comprar (tu lista + lo que buscaste antes), después el resto.
+  const oportunidades = ((opsRaw as Oportunidad[] | null) ?? []);
+  const terminos = [...new Set([...entradas.map((e) => e.termino), ...(historial ?? []).map((h) => h.termino as string)])]
+    .map(patron).filter((p): p is RegExp[] => !!p);
+  const esTuyo = (o: Oportunidad) => { const b = normalizar(o.base ?? o.nombre); return terminos.some((ps) => ps.every((r) => r.test(b))); };
+  const opsTuyas = oportunidades.filter(esTuyo).slice(0, 15);
+  const opsOtras = oportunidades.filter((o) => !opsTuyas.includes(o)).slice(0, 20);
 
   // Precio acá: producto fijado -> ese producto; si no -> la opción más barata por kg/l/u de este súper
   const fijados = entradas.filter((e) => e.producto);
@@ -73,9 +98,50 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
         <Bloque titulo="Comprá acá" filas={aca} tono="verde" superId={superId} />
         {!!otro.length && <Bloque titulo="Mejor en otro lado" filas={otro} tono="naranja" superId={superId} />}
         {!entradas.length && <p className="pt-10 text-center text-suave">Tu lista está vacía.</p>}
+        {(opsTuyas.length > 0 || opsOtras.length > 0) && (
+          <section>
+            <h2 className="px-1 text-lg font-bold">Oportunidades acá</h2>
+            <p className="mb-2 px-1 text-sm text-suave">Más baratos en {nombreSuper} que en cualquier otro súper.</p>
+            {opsTuyas.length > 0 && (
+              <>
+                <p className="mb-1.5 mt-3 px-1 text-xs font-bold uppercase tracking-wide text-marca">De lo que solés comprar</p>
+                <ListaOps ops={opsTuyas} />
+              </>
+            )}
+            {opsOtras.length > 0 && (
+              <details className="mt-3" open={!opsTuyas.length}>
+                <summary className="cursor-pointer px-1 py-1 text-sm font-semibold text-marca">Otras ofertas ({opsOtras.length})</summary>
+                <div className="mt-1.5"><ListaOps ops={opsOtras} /></div>
+              </details>
+            )}
+          </section>
+        )}
       </div>
     </main>
   );
+
+  function ListaOps({ ops }: { ops: Oportunidad[] }) {
+    return (
+      <ul className="divide-y divide-linea overflow-hidden rounded-2xl border border-linea bg-tarjeta">
+        {ops.map((o) => (
+          <li key={o.producto_id} className="flex items-start gap-3 px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[15px] leading-snug">{o.nombre}</p>
+              <p className="text-sm text-suave">
+                {o.super_sig}: <span className="num">{pesos(o.siguiente)}</span>
+                {presentacion(o.cant, o.dim) && <> · {presentacion(o.cant, o.dim)}</>}
+                {o.promo && <span className="ml-1"><Pill tono="naranja">promo</Pill></span>}
+              </p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="num font-semibold">{pesos(o.precio)}</p>
+              <Pill tono="verde">−{o.ahorro}%</Pill>
+            </div>
+          </li>
+        ))}
+      </ul>
+    );
+  }
 
   function Bloque({ titulo, filas, tono, superId }: { titulo: string; filas: Fila[]; tono: "verde" | "naranja"; superId: string }) {
     return (
