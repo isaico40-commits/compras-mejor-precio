@@ -9,7 +9,7 @@ export type PendienteSetto = {
 export type PendienteConProducto = PendienteSetto & {
   texto: string;                       // clave del alias
   busqueda: string;                    // texto limpio para buscar en el catálogo
-  alias: { producto_id: string | null; nombre: string | null; dim: string | null; termino: string | null; nombreItem: string | null } | undefined;
+  alias: { producto_id: string | null; nombre: string | null; dim: string | null; cant: number | null; termino: string | null; nombreItem: string | null } | undefined;
   lugar: { id: string; nombre: string } | null;   // donde (o lugar mencionado en el texto) -> súper/lugar de la app
 };
 
@@ -25,9 +25,9 @@ export function limpiarItem(item: string) {
 
 export const claveAlias = (item: string) => item.trim().toLowerCase().replace(/\s+/g, " ");
 
-/** Lee los pendientes de la lista de compras de la caja de Setto (solo lectura). */
-export async function leerPendientesSetto(supabase: SupabaseClient): Promise<PendienteSetto[] | null> {
-  const { data: integ } = await supabase.from("integraciones").select("setto_url, setto_key, setto_token").maybeSingle();
+type Integracion = { setto_url: string | null; setto_key: string | null; setto_token: string | null };
+
+async function fetchSetto(integ: Integracion | null): Promise<PendienteSetto[] | null> {
   if (!integ?.setto_url || !integ.setto_key || !integ.setto_token) return null;
   const res = await fetch(`${integ.setto_url}/rest/v1/rpc/compras_pendientes`, {
     method: "POST",
@@ -44,11 +44,21 @@ export async function leerPendientesSetto(supabase: SupabaseClient): Promise<Pen
   return res.json();
 }
 
+/** Lee los pendientes de la lista de compras de la caja de Setto (solo lectura). */
+export async function leerPendientesSetto(supabase: SupabaseClient): Promise<PendienteSetto[] | null> {
+  const { data } = await supabase.from("integraciones").select("setto_url, setto_key, setto_token").maybeSingle();
+  return fetchSetto(data);
+}
+
 export async function pendientesConAlias(supabase: SupabaseClient): Promise<PendienteConProducto[] | null> {
-  const pendientes = await leerPendientesSetto(supabase);
+  // Todo en paralelo: integración, alias y lugares
+  const [{ data: integ }, { data: alias }, { data: lugares }] = await Promise.all([
+    supabase.from("integraciones").select("setto_url, setto_key, setto_token").maybeSingle(),
+    supabase.from("alias_productos").select("texto, producto_id, termino, nombre, productos(nombre, dim, cant_base)"),
+    supabase.from("supermercados").select("id, nombre"),
+  ]);
+  const pendientes = await fetchSetto(integ);
   if (!pendientes) return null;
-  const { data: alias } = await supabase.from("alias_productos").select("texto, producto_id, termino, nombre, productos(nombre, dim)");
-  const { data: lugares } = await supabase.from("supermercados").select("id, nombre");
   const porNombre = (lugares ?? []).map((l) => ({ ...l, n: normalizar(l.nombre) }));
   const buscarLugar = (p: PendienteSetto) => {
     const donde = normalizar(p.donde);
@@ -58,10 +68,15 @@ export async function pendientesConAlias(supabase: SupabaseClient): Promise<Pend
   };
   const mapa = new Map(
     (alias ?? []).map((a) => {
-      const prod = a.productos as unknown as { nombre: string; dim: string | null } | null;
-      return [a.texto, { producto_id: a.producto_id, nombre: prod?.nombre ?? null, dim: prod?.dim ?? null, termino: a.termino, nombreItem: a.nombre }];
+      const prod = a.productos as unknown as { nombre: string; dim: string | null; cant_base: number | null } | null;
+      return [a.texto, { producto_id: a.producto_id, nombre: prod?.nombre ?? null, dim: prod?.dim ?? null, cant: prod?.cant_base ?? null, termino: a.termino, nombreItem: a.nombre }];
     }),
   );
-  return pendientes.map((p) => ({ ...p, texto: claveAlias(p.item), busqueda: limpiarItem(p.item), alias: mapa.get(claveAlias(p.item)),
-    lugar: (() => { const l = buscarLugar(p); return l ? { id: l.id, nombre: l.nombre } : null; })() }));
+  return pendientes.map((p) => ({
+    ...p,
+    texto: claveAlias(p.item),
+    busqueda: limpiarItem(p.item),
+    alias: mapa.get(claveAlias(p.item)),
+    lugar: (() => { const l = buscarLugar(p); return l ? { id: l.id, nombre: l.nombre } : null; })(),
+  }));
 }

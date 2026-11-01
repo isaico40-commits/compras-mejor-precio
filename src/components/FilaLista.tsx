@@ -40,7 +40,9 @@ export function Fila({ e, grupoId }: { e: Entrada; grupoId: string }) {
             {(enOtroLado || e.cantidad > 1) && r.porUnidad != null && <> · <span className="num">{porUnidad(r.porUnidad, r.dim)}</span></>}
           </p>
         ) : (
-          <p className="mt-0.5 text-sm text-suave">{e.lugar ? "Sin precio cargado" : "No encontré precios. Tocá para ajustar"}</p>
+          <p className="mt-0.5 text-sm text-suave">
+            {e.analizando ? "Analizando precios…" : e.lugar ? "Sin precio cargado" : "No encontré precios. Tocá para ajustar"}
+          </p>
         )}
         {enOtroLado && r && (
           <p className="mt-1 text-sm text-alerta">Más barato en {r.super}: <span className="num">{pesos(r.precio)}</span></p>

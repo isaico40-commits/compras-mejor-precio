@@ -144,7 +144,6 @@ export async function agregarALista(form: FormData) {
     : await supabase.from("lista_items").insert(fila);
   if (error) throw new Error(error.message);
   revalidatePath("/");
-  redirect("/");
 }
 
 /** Guarda los ajustes de un ítem propio. */
@@ -271,4 +270,13 @@ export async function borrarPrecio(form: FormData) {
   revalidatePath("/precios");
   revalidatePath("/");
   redirect("/precios");
+}
+
+/** Calcula en segundo plano el mejor precio de los términos que falten o estén viejos. */
+export async function analizarPendientes(terminos: string[], dims: (string | null)[]) {
+  if (!terminos.length) return 0;
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("analizar_terminos", { p_terminos: terminos.slice(0, 40), p_dims: dims.slice(0, 40) });
+  if (error) throw new Error(error.message);
+  return data as number;
 }
