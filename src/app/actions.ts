@@ -443,3 +443,20 @@ export async function lugarItems(items: ItemLote[], lugarId: string | null, nuev
   }
   revalidatePath("/");
 }
+
+/** Agrega varios ítems de una (nota compartida, dictado por voz). Van a la caja de Setto sin duplicar. */
+export async function agregarVarios(nombres: string[]) {
+  const supabase = await createClient();
+  let n = 0;
+  for (const nombre of nombres.map((x) => x.trim()).filter(Boolean).slice(0, 40)) {
+    const id = await agregarEnSetto(supabase, nombre).catch(() => null);
+    if (!id) {
+      const listaId = await idListaPorDefecto(supabase);
+      const { error } = await supabase.from("lista_items").insert({ lista_id: listaId, nombre, termino: nombre.toLowerCase(), cantidad: 1 });
+      if (error) throw new Error(error.message);
+    }
+    n++;
+  }
+  revalidatePath("/");
+  return { n };
+}
