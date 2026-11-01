@@ -79,6 +79,7 @@ export function NuevoLugar() {
         pattern="[^0-9$].*[A-Za-zÁÉÍÓÚáéíóúÑñ]{3,}.*" title="Escribí el nombre del lugar, no un precio ni una cantidad"
         className={`${inputCls} mt-1`}
       />
+      <a href="/lugares" className="mt-1 inline-block font-semibold text-marca">¿Cargaste un lugar por error? Borralo acá</a>
     </label>
   );
 }

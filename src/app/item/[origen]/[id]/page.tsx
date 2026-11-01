@@ -46,7 +46,7 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
 
   const [{ data: ops }, { data: lugares }, { data: pagos }, { data: hab }] = await Promise.all([
     enSuper ? supabase.rpc("opciones_termino2", { p_termino: termino, p_dim: dim, p_limite: 10 }) : Promise.resolve({ data: [] }),
-    supabase.from("supermercados").select("id, nombre").order("nombre"),
+    supabase.from("supermercados").select("id, nombre").eq("oculto", false).order("nombre"),
     enSuper ? Promise.resolve({ data: [] })
       : supabase.from("compras_historial").select("precio, fecha, supermercados(nombre)").eq("clave", claveCompra(termino || titulo)).order("fecha", { ascending: false }).limit(5),
     enSuper ? Promise.resolve({ data: null }) : supabase.from("rubros_habituales").select("lugar_id").eq("rubro", rubro).maybeSingle(),

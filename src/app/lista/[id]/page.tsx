@@ -28,7 +28,7 @@ export default async function ListaPage({
       : Promise.resolve({ data: [] as { id: string; nombre: string; marca: string | null; cantidad: number | null; unidad: string | null }[] }),
     supabase.rpc("mejor_precio_por_item", { p_lista_id: id }),
     supabase.rpc("total_lista_por_super", { p_lista_id: id }),
-    supabase.from("supermercados").select("id, nombre").order("nombre"),
+    supabase.from("supermercados").select("id, nombre").eq("oculto", false).order("nombre"),
   ]);
   if (!lista) notFound();
 

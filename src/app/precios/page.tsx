@@ -25,7 +25,7 @@ export default async function PreciosPage({
   if (sp.s) mios = mios.eq("supermercado_id", sp.s);
 
   const [{ data: supers }, { data: resultados }, { data: elegido }, { data: cargados }, lista] = await Promise.all([
-    supabase.from("supermercados").select("id, nombre").order("nombre"),
+    supabase.from("supermercados").select("id, nombre").eq("oculto", false).order("nombre"),
     q
       ? supabase.from("productos").select("id, nombre, marca, dim, cant_base").or(filtroBusqueda(q)).order("nombre").limit(20)
       : Promise.resolve({ data: [] as Prod[] }),

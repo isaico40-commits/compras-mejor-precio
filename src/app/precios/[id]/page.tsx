@@ -14,7 +14,7 @@ export default async function EditarPrecioPage({ params }: { params: Promise<{ i
       .from("precios")
       .select("id, precio, precio_promo, promo_detalle, fecha, supermercado_id, cargado_por, productos(id, nombre, cantidad, unidad, creado_por)")
       .eq("id", id).maybeSingle(),
-    supabase.from("supermercados").select("id, nombre").order("nombre"),
+    supabase.from("supermercados").select("id, nombre").eq("oculto", false).order("nombre"),
   ]);
   if (!p || p.cargado_por !== user?.id) notFound();
   const prod = p.productos as unknown as { id: string; nombre: string; cantidad: number | null; unidad: string | null; creado_por: string | null };
