@@ -85,3 +85,22 @@ export async function pendientesConAlias(supabase: SupabaseClient): Promise<Pend
     };
   });
 }
+
+/** Marca como comprados en la caja de Setto los ítems tildados (autorizado por Isaias el 2026-11-01). */
+export async function marcarEnSetto(supabase: SupabaseClient, ids: string[]) {
+  if (!ids.length) return 0;
+  const { data: integ } = await supabase.from("integraciones").select("setto_url, setto_key, setto_token").maybeSingle();
+  if (!integ?.setto_url || !integ.setto_key || !integ.setto_token) return 0;
+  const res = await fetch(`${integ.setto_url}/rest/v1/rpc/marcar_compras`, {
+    method: "POST",
+    headers: {
+      apikey: integ.setto_key,
+      "Content-Type": "application/json",
+      ...(integ.setto_key.startsWith("sb_") ? {} : { Authorization: `Bearer ${integ.setto_key}` }),
+    },
+    body: JSON.stringify({ p_token: integ.setto_token, p_ids: ids }),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`No pude marcar en Setto (${res.status})`);
+  return Number(await res.json());
+}

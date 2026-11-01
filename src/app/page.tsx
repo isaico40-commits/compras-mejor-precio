@@ -5,10 +5,13 @@ import { Fila } from "@/components/FilaLista";
 import { AgregarItem } from "@/components/AgregarItem";
 import { AutoAnalizar } from "@/components/AutoAnalizar";
 import { Encabezado, Pill } from "@/components/ui";
+import { sugerirRecompra } from "@/lib/recompra";
+import { agregarALista } from "@/app/actions";
 
 export default async function Home() {
   const supabase = await createClient();
-  const { grupos, entradas, settoError, porAnalizar } = await armarLista(supabase);
+  const { grupos, entradas, settoError, porAnalizar, plan } = await armarLista(supabase);
+  const recompra = await sugerirRecompra(supabase, entradas.map((e) => e.termino)).catch(() => []);
   const total = grupos.reduce((a, g) => a + g.total, 0);
   const lugares = grupos.filter((g) => g.id !== "sin-precio" && g.id !== "analizando").length;
 
@@ -33,6 +36,53 @@ export default async function Home() {
             <p className="text-4xl">🛒</p>
             <p className="mt-2">Escribí arriba lo que necesitás comprar.</p>
           </div>
+        )}
+
+        {recompra.length > 0 && (
+          <section className="mt-5">
+            <h2 className="mb-2 px-1 font-bold">Te estaría faltando</h2>
+            <ul className="divide-y divide-linea overflow-hidden rounded-2xl border border-linea bg-tarjeta">
+              {recompra.map((r) => (
+                <li key={r.clave} className="flex items-center justify-between gap-3 px-4 py-3">
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{r.nombre}</span>
+                    <span className="text-sm text-suave">Lo comprás cada {r.cadaDias} días · hace {r.haceDias}</span>
+                  </span>
+                  <form action={agregarALista}>
+                    <input type="hidden" name="nombre" value={r.nombre} />
+                    <button className="rounded-lg border border-linea px-3 py-1.5 text-sm font-semibold text-marca">Agregar</button>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {plan && (
+          <section className="mt-5 rounded-2xl border border-linea bg-tarjeta p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-suave">Plan del viaje</p>
+            <p className="mt-1">
+              Todo en <b>{plan.solo.super}</b>: <span className="num font-semibold">{pesos(plan.solo.total)}</span>
+              {plan.solo.cubre < plan.items && <span className="text-sm text-suave"> ({plan.solo.cubre} de {plan.items} cosas)</span>}
+            </p>
+            {plan.par ? (
+              <>
+                <p className="mt-1">
+                  Dividiendo <b>{plan.par.a}</b> + <b>{plan.par.b}</b>: <span className="num font-semibold">{pesos(plan.par.total)}</span>
+                </p>
+                <p className="mt-2 rounded-xl bg-marca-suave px-3 py-2 text-sm font-semibold text-marca">
+                  Ahorrás <span className="num">{pesos(plan.par.ahorro)}</span> haciendo dos paradas
+                </p>
+                <details className="mt-2 text-sm">
+                  <summary className="cursor-pointer font-semibold text-marca">Qué comprar en cada uno</summary>
+                  <p className="mt-1"><b>{plan.par.a}:</b> {plan.par.enA.join(", ")}</p>
+                  <p className="mt-1"><b>{plan.par.b}:</b> {plan.par.enB.join(", ")}</p>
+                </details>
+              </>
+            ) : (
+              <p className="mt-1 text-sm text-suave">Dividir la compra no te ahorra casi nada: andá a uno solo.</p>
+            )}
+          </section>
         )}
 
         <div className="mt-5 space-y-6">

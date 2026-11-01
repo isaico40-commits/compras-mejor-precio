@@ -9,7 +9,7 @@ export type Opcion = {
 
 /** Opción guardada en el análisis (tabla sugerencias) */
 type OpcionGuardada = { producto_id: string; nombre: string; super_id: string; super: string; precio: number; cant: number; pu: number | null };
-type Analisis = { dim: string | null; n: number; mediana: number | null; chica: number | null; opciones: OpcionGuardada[] };
+type Analisis = { dim: string | null; n: number; mediana: number | null; chica: number | null; opciones: OpcionGuardada[]; por_super?: Record<string, { precio: number; pu: number | null }> };
 
 export type Entrada = {
   key: string;
@@ -29,6 +29,13 @@ export type Entrada = {
   analizando: boolean;
   recomendado: { superId: string; super: string; precio: number | null; nombre: string; porUnidad: number | null; dim: string | null; cant: number | null } | null;
   consejo: string | null;
+};
+
+/** Cuánto sale todo en un solo súper vs. dividir la compra en dos. */
+export type PlanViaje = {
+  items: number;
+  solo: { super: string; total: number; cubre: number };
+  par: { a: string; b: string; total: number; ahorro: number; enA: string[]; enB: string[] } | null;
 };
 
 export type Grupo = { id: string; nombre: string; entradas: Entrada[]; total: number; anotado: boolean };
@@ -86,12 +93,25 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
 
   // Análisis guardados (1 consulta) + mejor precio de los productos fijados (si hay)
   const idsFijos = [...new Set(entradas.map((e) => e.producto?.id).filter((x): x is string => !!x))];
-  const [{ data: guardados }, { data: fijos }] = await Promise.all([
+  const hace30 = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
+  const [{ data: guardados }, { data: fijos }, { data: supers }, { data: fijosPorSuper }] = await Promise.all([
     entradas.length
       ? supabase.rpc("leer_sugerencias", { p_terminos: entradas.map((e) => e.termino), p_dims: entradas.map((e) => e.dim) })
       : Promise.resolve({ data: [] }),
     idsFijos.length ? supabase.rpc("comparar_productos", { p_productos: idsFijos, p_super_id: null }) : Promise.resolve({ data: [] }),
+    supabase.from("supermercados").select("id, nombre"),
+    idsFijos.length
+      ? supabase.from("precios").select("producto_id, supermercado_id, precio, precio_promo").in("producto_id", idsFijos)
+          .gte("fecha", hace30).order("fecha", { ascending: false }).order("created_at", { ascending: false }).limit(3000)
+      : Promise.resolve({ data: [] }),
   ]);
+  // Último precio de cada producto fijado en cada súper
+  const fijoSuper = new Map<string, Map<string, number>>();
+  for (const r of (fijosPorSuper as { producto_id: string; supermercado_id: string; precio: number; precio_promo: number | null }[] | null) ?? []) {
+    const m = fijoSuper.get(r.producto_id) ?? new Map<string, number>();
+    if (!m.has(r.supermercado_id)) m.set(r.supermercado_id, Number(r.precio_promo ?? r.precio));
+    fijoSuper.set(r.producto_id, m);
+  }
   const analisis = new Map(
     ((guardados as { orden: number; resultado: Analisis; calculado_at: string }[] | null) ?? []).map((g) => [g.orden - 1, g]),
   );
@@ -102,7 +122,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
   const porAnalizar: { termino: string; dim: string | null }[] = [];
   entradas.forEach((e, idx) => {
     const g = analisis.get(idx);
-    if (!g || Date.now() - new Date(g.calculado_at).getTime() > VIGENCIA_MS) {
+    if (!g || !g.resultado?.por_super || Date.now() - new Date(g.calculado_at).getTime() > VIGENCIA_MS) {
       porAnalizar.push({ termino: e.termino, dim: e.dim });
       if (!g) e.analizando = true;
     }
@@ -133,7 +153,6 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
   });
 
   // Agrupar: lo anotado para un lugar va ahí; si no, al súper más barato
-  const { data: supers } = idsFijos.length ? await supabase.from("supermercados").select("id, nombre") : { data: [] };
   const superPorNombre = new Map((supers ?? []).map((s) => [s.nombre, s.id]));
   const grupos = new Map<string, Grupo>();
   for (const e of entradas) {
@@ -151,5 +170,54 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
   const peso = (g: Grupo) => (g.id === "analizando" ? -2 : g.id === "sin-precio" ? -1 : g.entradas.length);
   const orden = [...grupos.values()].sort((a, b) => (a.id === "analizando" ? -1 : b.id === "analizando" ? 1 : peso(b) - peso(a)));
   for (const g of orden) g.entradas.sort((a, b) => Number(b.urgente) - Number(a.urgente) || a.titulo.localeCompare(b.titulo));
-  return { grupos: orden, entradas, settoError: settoRes.error, porAnalizar };
+
+  // Plan del viaje: precio de cada ítem (sin lugar anotado) en cada súper
+  const nombreSuper = new Map((supers ?? []).map((x) => [x.id as string, x.nombre as string]));
+  const precios = entradas.filter((e) => !e.lugar).map((e) => {
+    const idx = entradas.indexOf(e);
+    const m = new Map<string, number>();
+    if (e.producto) fijoSuper.get(e.producto.id)?.forEach((p, sid) => m.set(sid, p * e.cantidad));
+    else {
+      // Comparar por kilo/litro/unidad, llevado al tamaño de la opción recomendada (no paquete chico vs grande)
+      const an = analisis.get(idx)?.resultado;
+      const ref = Number(an?.opciones?.[0]?.cant ?? 1) || 1;
+      for (const [sid, v] of Object.entries(an?.por_super ?? {})) m.set(sid, (v.pu != null ? Number(v.pu) * ref : Number(v.precio)) * e.cantidad);
+    }
+    return { titulo: e.titulo, m };
+  }).filter((x) => x.m.size > 0);
+  const plan = planDelViaje(precios, nombreSuper);
+
+  return { grupos: orden, entradas, settoError: settoRes.error, porAnalizar, plan };
+}
+
+function planDelViaje(items: { titulo: string; m: Map<string, number> }[], nombres: Map<string, string>): PlanViaje | null {
+  if (items.length < 2) return null;
+  const ids = [...new Set(items.flatMap((i) => [...i.m.keys()]))];
+  // Un solo súper: el que tiene más cosas y, a igualdad, el más barato
+  let solo: { id: string; total: number; cubre: number } | null = null;
+  for (const id of ids) {
+    let total = 0, cubre = 0;
+    for (const i of items) { const p = i.m.get(id); if (p != null) { total += p; cubre++; } }
+    if (!solo || cubre > solo.cubre || (cubre === solo.cubre && total < solo.total)) solo = { id, total, cubre };
+  }
+  if (!solo) return null;
+  const base = items.filter((i) => i.m.has(solo!.id));
+  // Dos súpers: sobre las mismas cosas, el par que más ahorra
+  let par: PlanViaje["par"] = null;
+  for (let x = 0; x < ids.length; x++) for (let y = x + 1; y < ids.length; y++) {
+    const a = ids[x], b = ids[y];
+    let total = 0; const enA: string[] = [], enB: string[] = [];
+    let ok = true;
+    for (const i of base) {
+      const pa = i.m.get(a), pb = i.m.get(b);
+      if (pa == null && pb == null) { ok = false; break; }
+      if (pb == null || (pa != null && pa <= pb)) { total += pa!; enA.push(i.titulo); } else { total += pb; enB.push(i.titulo); }
+    }
+    if (!ok || !enA.length || !enB.length) continue;
+    const ahorro = solo.total - total;
+    if (!par || ahorro > par.ahorro) par = { a: nombres.get(a) ?? a, b: nombres.get(b) ?? b, total, ahorro, enA, enB };
+  }
+  // Solo vale la pena si ahorrás al menos $1.500 o 5%
+  if (par && (par.ahorro < 1500 && par.ahorro < solo.total * 0.05)) par = null;
+  return { items: items.length, solo: { super: nombres.get(solo.id) ?? solo.id, total: solo.total, cubre: solo.cubre }, par };
 }

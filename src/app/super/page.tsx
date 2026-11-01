@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { armarLista, type Entrada } from "@/lib/lista";
 import { pesos, porUnidad, presentacion, normalizar } from "@/lib/formato";
-import { marcarComprado } from "@/app/actions";
+import { Changuito, type FilaSuper } from "@/components/Changuito";
 import { Encabezado, Pill } from "@/components/ui";
 
 type Oportunidad = {
@@ -69,9 +69,9 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
   const fijMap = new Map(((fijAca as { producto_id: string; precio_aca: number | null }[] | null) ?? []).map((f) => [f.producto_id, f.precio_aca]));
   const libMap = new Map(((libAca as Aca[] | null) ?? []).map((a) => [libres[a.orden - 1].e.key, a]));
 
-  type Fila = { e: Entrada; precio: number | null; nombre: string | null; pu: number | null; dim: string | null; cant: number | null; conviene: boolean };
+  type Fila = { e: Entrada; precio: number | null; nombre: string | null; pu: number | null; dim: string | null; cant: number | null; conviene: boolean; pid: string | null };
   const filas: Fila[] = entradas.map((e) => {
-    let precio: number | null = null, nombre: string | null = null, pu: number | null = null, dim: string | null = null, cant: number | null = null;
+    let precio: number | null = null, nombre: string | null = null, pu: number | null = null, dim: string | null = null, cant: number | null = null, pid: string | null = e.producto?.id ?? null;
     if (e.producto) {
       const p = fijMap.get(e.producto.id);
       precio = p != null ? Number(p) : null; nombre = e.producto.nombre;
@@ -79,11 +79,11 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
       pu = precio != null && cant ? precio / Number(cant) : null;
     } else {
       const a = libMap.get(e.key);
-      if (a) { precio = Number(a.precio); nombre = a.nombre; pu = a.por_unidad != null ? Number(a.por_unidad) : null; dim = a.dim; cant = Number(a.cant_base); }
+      if (a) { precio = Number(a.precio); nombre = a.nombre; pid = a.producto_id; pu = a.por_unidad != null ? Number(a.por_unidad) : null; dim = a.dim; cant = Number(a.cant_base); }
     }
     const mejor = e.recomendado?.porUnidad ?? null;
     const conviene = e.lugar?.id === superId || (pu != null && (mejor == null || pu <= Number(mejor) * 1.03)) || (precio != null && e.recomendado?.superId === superId);
-    return { e, precio, nombre, pu, dim, cant, conviene };
+    return { e, precio, nombre, pu, dim, cant, conviene, pid };
   });
   const aca = filas.filter((f) => f.conviene);
   const otro = filas.filter((f) => !f.conviene);
@@ -94,9 +94,11 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
       <Encabezado titulo={nombreSuper} sub={<>Comprá acá {aca.length} cosas · <span className="num">{pesos(total)}</span></>}>
         <Link href="/super" className="pb-1 text-sm font-semibold text-marca">Cambiar</Link>
       </Encabezado>
-      <div className="space-y-6 px-4">
-        <Bloque titulo="Comprá acá" filas={aca} tono="verde" superId={superId} />
-        {!!otro.length && <Bloque titulo="Mejor en otro lado" filas={otro} tono="naranja" superId={superId} />}
+      <div className="space-y-6 px-4 pb-20">
+        <Changuito superId={superId} bloques={[
+          { titulo: "Comprá acá", tono: "verde", filas: aca.map((f) => aFila(f, false)) },
+          { titulo: "Mejor en otro lado", tono: "naranja", filas: otro.map((f) => aFila(f, true)) },
+        ]} />
         {!entradas.length && <p className="pt-10 text-center text-suave">Tu lista está vacía.</p>}
         {(opsTuyas.length > 0 || opsOtras.length > 0) && (
           <section>
@@ -143,47 +145,16 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
     );
   }
 
-  function Bloque({ titulo, filas, tono, superId }: { titulo: string; filas: Fila[]; tono: "verde" | "naranja"; superId: string }) {
-    return (
-      <section>
-        <h2 className={`mb-2 px-1 text-lg font-bold ${tono === "verde" ? "text-marca" : "text-alerta"}`}>{titulo}</h2>
-        <ul className="divide-y divide-linea overflow-hidden rounded-2xl border border-linea bg-tarjeta">
-          {filas.map(({ e, precio, nombre, pu, dim, cant }) => (
-            <li key={e.key} className="flex items-start gap-3 px-3 py-3">
-              {e.origen === "mio" ? (
-                <form action={marcarComprado} className="pt-0.5">
-                  <input type="hidden" name="id" value={e.itemId} />
-                  <button aria-label="Comprado" className="h-7 w-7 rounded-full border-2 border-linea active:border-marca active:bg-marca-suave" />
-                </form>
-              ) : (
-                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-fondo text-[10px] font-bold text-suave">S</span>
-              )}
-              <div className="min-w-0 flex-1">
-                <div className="flex justify-between gap-2">
-                  <p className="font-semibold leading-snug">
-                    {e.urgente && <span className="text-alerta">● </span>}
-                    {e.cantidad > 1 && <span className="num text-suave">{e.cantidad}× </span>}{e.titulo}
-                  </p>
-                  <span className="num shrink-0 font-semibold">{precio != null ? pesos(precio) : "—"}</span>
-                </div>
-                {nombre && (
-                  <p className="truncate text-sm text-suave">
-                    {nombre !== e.titulo && <>{nombre} · </>}{presentacion(cant, dim) && <>{presentacion(cant, dim)} · </>}
-                    <span className="num">{porUnidad(pu, dim)}</span>
-                  </p>
-                )}
-                {e.lugar?.id === superId && <Pill tono="verde">anotado para acá</Pill>}
-                {tono === "naranja" && e.recomendado && (
-                  <p className="text-sm text-alerta">
-                    {e.recomendado.super}: <span className="num">{pesos(e.recomendado.precio)}</span> · {porUnidad(e.recomendado.porUnidad, e.recomendado.dim)}
-                    {precio == null && " · acá no hay precio"}
-                  </p>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
-    );
+  function aFila({ e, precio, nombre, pu, dim, cant, pid }: Fila, otroLado: boolean): FilaSuper {
+    const pres = presentacion(cant, dim);
+    const detalle = nombre ? [nombre !== e.titulo ? nombre : null, pres || null, porUnidad(pu, dim) || null].filter(Boolean).join(" · ") : null;
+    return {
+      key: e.key, origen: e.origen, itemId: e.itemId, titulo: e.titulo, termino: e.termino, productoId: pid,
+      precio: precio != null ? precio * e.cantidad : null, precioTxt: precio != null ? pesos(precio) : "—",
+      cantidad: e.cantidad, urgente: e.urgente, detalle: detalle || null, anotado: e.lugar?.id === superId,
+      otroLado: otroLado && e.recomendado
+        ? `${e.recomendado.super}: ${pesos(e.recomendado.precio)} · ${porUnidad(e.recomendado.porUnidad, e.recomendado.dim)}${precio == null ? " · acá no hay precio" : ""}`
+        : null,
+    };
   }
 }

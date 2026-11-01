@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { marcarEnSetto } from "@/lib/setto";
 
 const num = (v: FormDataEntryValue | null) => (v === null || v === "" ? null : Number(v));
 const txt = (v: FormDataEntryValue | null) => (v === null || v === "" ? null : String(v).trim());
@@ -312,4 +313,44 @@ export async function analizarPendientes(terminos: string[], dims: (string | nul
   const { data, error } = await supabase.rpc("analizar_terminos", { p_terminos: terminos.slice(0, 40), p_dims: dims.slice(0, 40) });
   if (error) throw new Error(error.message);
   return data as number;
+}
+
+export type ItemCarrito = { origen: "mio" | "setto"; itemId: string; titulo: string; termino: string; productoId: string | null; precio: number | null };
+
+/** Fin de la compra en el súper: guarda el historial, tacha lo propio y marca lo de Setto en la caja. */
+export async function terminarCompra(superId: string, items: ItemCarrito[]) {
+  const supabase = await createClient();
+  const hoy = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+  const mios = items.filter((i) => i.origen === "mio").map((i) => i.itemId);
+  const setto = items.filter((i) => i.origen === "setto").map((i) => i.itemId);
+  const clave = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+  const esUuid = /^[0-9a-f-]{36}$/i.test(superId);
+
+  const [hist, propios] = await Promise.all([
+    items.length
+      ? supabase.from("compras_historial").insert(items.map((i) => ({
+          clave: clave(i.termino || i.titulo), nombre: i.titulo, producto_id: i.productoId,
+          supermercado_id: esUuid ? superId : null, precio: i.precio, fecha: hoy, origen: i.origen,
+        })))
+      : Promise.resolve({ error: null }),
+    mios.length ? supabase.from("lista_items").update({ ultima_compra: hoy }).in("id", mios) : Promise.resolve({ error: null }),
+  ]);
+  if (hist.error) throw new Error(hist.error.message);
+  if (propios.error) throw new Error(propios.error.message);
+
+  let settoError: string | null = null;
+  try { await marcarEnSetto(supabase, setto); } catch (e) { settoError = (e as Error).message; }
+  revalidatePath("/");
+  revalidatePath("/super");
+  return { ok: true, settoError };
+}
+
+/** Sube la foto de un ticket (ya comprimida en el celu) para que Claude la cargue después. */
+export async function subirTicket(base64: string, tipo: string, nota: string | null) {
+  const supabase = await createClient();
+  const hex = "\\x" + Buffer.from(base64, "base64").toString("hex");
+  const { error } = await supabase.from("ticket_fotos").insert({ foto: hex, tipo, nota: nota || null });
+  if (error) throw new Error(error.message);
+  revalidatePath("/tickets");
+  return { ok: true };
 }
