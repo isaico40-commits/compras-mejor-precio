@@ -1,22 +1,23 @@
+"use client";
+
 import Link from "next/link";
 import type { Entrada } from "@/lib/lista";
 import { pesos, porUnidad, presentacion } from "@/lib/formato";
-import { marcarComprado } from "@/app/actions";
 
-export function Fila({ e, grupoId }: { e: Entrada; grupoId: string }) {
+export function Fila({ e, grupoId, sel, seleccionando, onToggle }: {
+  e: Entrada; grupoId: string; sel: boolean; seleccionando: boolean; onToggle: () => void;
+}) {
   const r = e.recomendado;
   const enOtroLado = r && e.lugar && r.superId !== grupoId;
   return (
-    <li className="flex items-start gap-3 px-3 py-3">
-      {e.origen === "mio" ? (
-        <form action={marcarComprado} className="pt-0.5">
-          <input type="hidden" name="id" value={e.itemId} />
-          <button aria-label="Marcar comprado" className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-linea active:border-marca active:bg-marca-suave" />
-        </form>
-      ) : (
-        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-fondo text-[10px] font-bold text-suave" title="De la caja de Setto">S</span>
-      )}
-      <Link href={`/item/${e.origen}/${e.itemId}`} className="min-w-0 flex-1">
+    <li className={`flex items-start gap-3 px-3 py-3 ${sel ? "bg-marca-suave/60" : ""}`}>
+      <button onClick={onToggle} aria-label={sel ? "Quitar de la selección" : "Seleccionar"} className="pt-0.5">
+        <span className={`flex h-7 w-7 items-center justify-center rounded-full border-2 ${sel ? "border-marca bg-marca text-white" : "border-linea"}`}>
+          {sel ? <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="3"><path d="m5 12 5 5 9-10" /></svg>
+            : e.origen === "setto" ? <span className="text-[10px] font-bold text-suave">S</span> : null}
+        </span>
+      </button>
+      <Link href={`/item/${e.origen}/${e.itemId}`} onClick={(ev) => { if (seleccionando) { ev.preventDefault(); onToggle(); } }} className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
           <p className="font-semibold leading-snug">
             {e.urgente && <span className="text-alerta">● </span>}

@@ -1,10 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { armarLista } from "@/lib/lista";
 import { pesos } from "@/lib/formato";
-import { Fila } from "@/components/FilaLista";
+import { ListaInteractiva } from "@/components/ListaInteractiva";
 import { AgregarItem } from "@/components/AgregarItem";
 import { AutoAnalizar } from "@/components/AutoAnalizar";
-import { Encabezado, Pill } from "@/components/ui";
+import { Encabezado } from "@/components/ui";
 import { sugerirRecompra } from "@/lib/recompra";
 import { agregarALista } from "@/app/actions";
 import Link from "next/link";
@@ -15,7 +15,10 @@ export default async function Home() {
   const { grupos, entradas, settoError, porAnalizar, plan, descuentos } = await armarLista(supabase);
   const { dia } = hoyAR();
   const promosHoy = descuentos.filter((d) => d.dias.includes(dia));
-  const recompra = await sugerirRecompra(supabase, entradas.map((e) => e.termino)).catch(() => []);
+  const [recompra, { data: supers }] = await Promise.all([
+    sugerirRecompra(supabase, entradas.map((e) => e.termino)).catch(() => []),
+    supabase.from("supermercados").select("id, nombre").order("nombre"),
+  ]);
   const total = grupos.reduce((a, g) => a + g.total, 0);
   const lugares = grupos.filter((g) => g.id !== "sin-precio" && g.id !== "analizando").length;
 
@@ -25,7 +28,7 @@ export default async function Home() {
         titulo="Mi lista"
         sub={entradas.length ? <>{entradas.length} cosas · <span className="num">{pesos(total)}</span> en {lugares} lugar{lugares === 1 ? "" : "es"}</> : "Nada pendiente"}
       />
-      <div className="px-4">
+      <div className="px-4 pb-28">
         <AgregarItem />
         <AutoAnalizar
           terminos={porAnalizar.map((p) => p.termino)}
@@ -110,22 +113,7 @@ export default async function Home() {
           </section>
         )}
 
-        <div className="mt-5 space-y-6">
-          {grupos.map((g) => (
-            <section key={g.id}>
-              <div className="mb-2 flex items-baseline justify-between px-1">
-                <h2 className={`text-lg font-bold ${g.id === "analizando" ? "text-suave" : ""}`}>
-                  {g.nombre}
-                  {g.anotado && <span className="ml-2 align-middle"><Pill>anotado</Pill></span>}
-                </h2>
-                {g.total > 0 && <span className="num text-sm font-semibold text-suave">{pesos(g.total)}</span>}
-              </div>
-              <ul className="divide-y divide-linea overflow-hidden rounded-2xl border border-linea bg-tarjeta">
-                {g.entradas.map((e) => <Fila key={e.key} e={e} grupoId={g.id} />)}
-              </ul>
-            </section>
-          ))}
-        </div>
+        <ListaInteractiva grupos={grupos} supers={supers ?? []} />
       </div>
     </main>
   );
