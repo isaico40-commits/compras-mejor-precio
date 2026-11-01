@@ -16,6 +16,7 @@ async function comprimir(file: File): Promise<string> {
 
 export function SubirTicket() {
   const input = useRef<HTMLInputElement>(null);
+  const galeria = useRef<HTMLInputElement>(null);
   const [nota, setNota] = useState("");
   const [estado, setEstado] = useState<string | null>(null);
   const [pendiente, start] = useTransition();
@@ -35,6 +36,7 @@ export function SubirTicket() {
         setEstado(`No se pudo subir: ${(err as Error).message}`);
       }
       if (input.current) input.current.value = "";
+      if (galeria.current) galeria.current.value = "";
     });
   };
 
@@ -44,7 +46,11 @@ export function SubirTicket() {
         className="w-full rounded-xl border border-linea bg-tarjeta px-3 py-2.5 text-[15px] outline-none focus:border-marca" />
       <label className={`block w-full cursor-pointer rounded-xl bg-marca px-4 py-3 text-center font-semibold text-white active:opacity-80 ${pendiente ? "opacity-60" : ""}`}>
         {pendiente ? "Subiendo…" : "Sacar foto del ticket"}
-        <input ref={input} type="file" accept="image/*" capture="environment" multiple onChange={elegir} disabled={pendiente} className="sr-only" />
+        <input ref={input} type="file" accept="image/*" capture="environment" onChange={elegir} disabled={pendiente} className="sr-only" />
+      </label>
+      <label className={`block w-full cursor-pointer rounded-xl border border-linea bg-tarjeta px-4 py-3 text-center font-semibold active:bg-fondo ${pendiente ? "opacity-60" : ""}`}>
+        Elegir desde la galería
+        <input ref={galeria} type="file" accept="image/*" multiple onChange={elegir} disabled={pendiente} className="sr-only" />
       </label>
       {estado && <p className="text-center text-sm text-suave">{estado}</p>}
     </div>
