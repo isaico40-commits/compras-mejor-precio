@@ -74,3 +74,14 @@ export async function salir() {
   await supabase.auth.signOut();
   redirect("/login");
 }
+
+export async function marcarComprado(form: FormData) {
+  const supabase = await createClient();
+  const deshacer = form.get("deshacer") === "1";
+  const hoy = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+  await supabase
+    .from("lista_items")
+    .update({ ultima_compra: deshacer ? null : hoy })
+    .eq("id", String(form.get("id")));
+  revalidatePath("/super");
+}
