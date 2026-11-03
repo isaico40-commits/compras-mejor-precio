@@ -9,12 +9,8 @@ import { quitarItems, lugarItems, rubroItems, type ItemLote } from "@/app/action
 import { RUBROS, type Rubro } from "@/lib/rubros";
 import { tintaTono, type Tono } from "@/components/ui";
 
-// Color del grupo según qué es: súper, verdulería, bazar, otro comercio
-const tonoGrupo = (g: Grupo): Tono | null => {
-  if (g.id === "analizando" || g.id === "sin-precio") return null;
-  const r = g.entradas[0]?.rubro;
-  return r === "verduleria" ? "menta" : r === "bazar" ? "lila" : r === "otro" ? "durazno" : "cielo";
-};
+// Color del grupo: el de su categoría
+const tonoGrupo = (g: Grupo): Tono | null => g.tono ?? null;
 const fondo: Record<Tono, string> = { blanco: "bg-tarjeta", menta: "bg-menta", cielo: "bg-cielo", lila: "bg-lila", durazno: "bg-durazno", limon: "bg-limon" };
 
 const fmt = (n: number) => "$" + Math.round(n).toLocaleString("es-AR");

@@ -12,7 +12,7 @@ import { DIAS, hoyAR, textoDescuento } from "@/lib/descuentos";
 
 export default async function Home() {
   const supabase = await createClient();
-  const { grupos, entradas, settoError, porAnalizar, plan, descuentos } = await armarLista(supabase);
+  const { grupos, porCategoria, entradas, settoError, porAnalizar, plan, descuentos } = await armarLista(supabase);
   const { dia } = hoyAR();
   const promosHoy = descuentos.filter((d) => d.dias.includes(dia));
   const [recompra, { data: supers }] = await Promise.all([
@@ -113,7 +113,7 @@ export default async function Home() {
           </section>
         )}
 
-        <ListaInteractiva grupos={grupos} supers={supers ?? []} />
+        <ListaInteractiva grupos={porCategoria} supers={supers ?? []} />
       </div>
     </main>
   );

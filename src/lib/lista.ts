@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { pendientesConAlias } from "@/lib/setto";
 import { presentacion } from "@/lib/formato";
+import { categoriaDe, CATEGORIAS } from "@/lib/categorias";
 import { detectarRubro, esRubro, RUBROS, type Rubro } from "@/lib/rubros";
 import { leerDescuentos, mejorDescuento, hoyAR, textoDescuento, type Descuento } from "@/lib/descuentos";
 
@@ -43,7 +44,7 @@ export type PlanViaje = {
   par: { a: string; b: string; total: number; ahorro: number; enA: string[]; enB: string[]; promoA: string | null; promoB: string | null } | null;
 };
 
-export type Grupo = { id: string; nombre: string; entradas: Entrada[]; total: number; anotado: boolean };
+export type Grupo = { id: string; nombre: string; entradas: Entrada[]; total: number; anotado: boolean; tono?: "menta" | "cielo" | "lila" | "durazno" | "limon" };
 
 /** Misma clave que guarda el historial de compras ("Azúcar  común" -> "azucar comun") */
 export const claveCompra = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
@@ -230,7 +231,19 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
   for (const p of precios) for (const [sid, v] of p.m) { const d = promoHoy.get(sid); if (d) p.m.set(sid, v * (1 - d.porcentaje / 100)); }
   const plan = planDelViaje(precios, nombreSuper, promoHoy);
 
-  return { grupos: orden, entradas, settoError: settoRes.error, porAnalizar, plan, descuentos };
+  // Para mostrar: agrupado por categoría (el súper va como etiqueta en cada ítem)
+  const cats = new Map<string, Grupo>();
+  for (const g of orden) for (const e of g.entradas) {
+    const c = categoriaDe(e.titulo, e.rubro);
+    const cg = cats.get(c.id) ?? { id: `cat-${c.id}`, nombre: c.nombre, entradas: [], total: 0, anotado: false, tono: c.tono };
+    cg.entradas.push(e);
+    if (!e.lugar || e.lugar.id === e.recomendado?.superId) cg.total += (e.recomendado?.precio ?? 0) * e.cantidad;
+    cats.set(c.id, cg);
+  }
+  const porCategoria = CATEGORIAS.map((c) => cats.get(c.id)).filter((g): g is Grupo => !!g);
+  for (const g of porCategoria) g.entradas.sort((a, b) => Number(b.urgente) - Number(a.urgente) || a.titulo.localeCompare(b.titulo));
+
+  return { grupos: orden, porCategoria, entradas, settoError: settoRes.error, porAnalizar, plan, descuentos };
 }
 
 function planDelViaje(items: { titulo: string; m: Map<string, number> }[], nombres: Map<string, string>, promos: Map<string, Descuento>): PlanViaje | null {
