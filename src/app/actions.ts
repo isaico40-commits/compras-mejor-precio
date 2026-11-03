@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { esRubro, type Rubro } from "@/lib/rubros";
-import { CATEGORIAS, rubroDeCategoria } from "@/lib/categorias";
-import { marcarEnSetto, actualizarEnSetto, agregarEnSetto, claveAlias } from "@/lib/setto";
+import { esRubro, detectarRubro, type Rubro } from "@/lib/rubros";
+import { CATEGORIAS, rubroDeCategoria, categoriaDe } from "@/lib/categorias";
+import { marcarEnSetto, actualizarEnSetto, agregarEnSetto, claveAlias, leerPendientesSetto } from "@/lib/setto";
 
 const num = (v: FormDataEntryValue | null) => (v === null || v === "" ? null : Number(v));
 const txt = (v: FormDataEntryValue | null) => (v === null || v === "" ? null : String(v).trim());
@@ -453,6 +453,16 @@ export async function lugarItems(items: ItemLote[], lugarId: string | null, nuev
 }
 
 /** Agrega varios ítems de una (nota compartida, dictado por voz). Van a la caja de Setto sin duplicar. */
+export type ResultadoAgregar = {
+  nombre: string;
+  estado: "nuevo" | "ya_estaba" | "reactivado";
+  donde: "casa" | "setto";
+  categoria: string; categoriaNombre: string;
+  fuente: "super" | "propio";
+  origen: "mio" | "setto"; itemId: string | null; texto?: string;
+};
+
+/** Agrega uno o varios ítems sin duplicar y devuelve qué pasó con cada uno (nuevo / ya estaba / a qué categoría fue). */
 export async function agregarVarios(entrada: (string | { nombre: string; categoria: string | null })[], destino: "casa" | "setto" = "casa") {
   const supabase = await createClient();
   const items = entrada
@@ -460,19 +470,64 @@ export async function agregarVarios(entrada: (string | { nombre: string; categor
     .map((x) => ({ nombre: x.nombre.trim(), categoria: x.categoria && CATEGORIAS.some((c) => c.id === x.categoria) ? x.categoria : null }))
     .filter((x) => x.nombre)
     .slice(0, 60);
-  const listaId = await idListaPorDefecto(supabase);
+  const [listaId, { data: propios }, pendSetto] = await Promise.all([
+    idListaPorDefecto(supabase),
+    supabase.from("lista_items").select("id, nombre, termino, ultima_compra, frecuencia_dias, categoria, rubro"),
+    leerPendientesSetto(supabase).catch(() => null),
+  ]);
+  const hoy = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+  const pendiente = (u: string | null, f: number | null) => {
+    if (!u) return true;
+    if (!f) return false;
+    const p = new Date(u); p.setDate(p.getDate() + f);
+    return p.toISOString().slice(0, 10) <= hoy;
+  };
+  const mios = new Map((propios ?? []).map((p) => [claveAlias(p.nombre ?? p.termino ?? ""), p]));
+  const enSetto = new Map((pendSetto ?? []).map((p) => [claveAlias(p.item), p]));
+
+  const resultados: ResultadoAgregar[] = [];
   const alias: { texto: string; categoria: string; rubro: string | null }[] = [];
-  // De a 6 en paralelo: una lista pegada de 20 cosas no tarda 20 viajes
+  const vistos = new Set<string>();
   for (let i = 0; i < items.length; i += 6) {
     await Promise.all(items.slice(i, i + 6).map(async ({ nombre, categoria }) => {
-      const rubro = rubroDeCategoria(categoria);
-      const id = destino === "setto" ? await agregarEnSetto(supabase, nombre).catch(() => null) : null;
-      if (id) {
-        if (categoria) alias.push({ texto: claveAlias(nombre), categoria, rubro });
+      const k = claveAlias(nombre);
+      if (vistos.has(k)) return;
+      vistos.add(k);
+      const rubroElegido = rubroDeCategoria(categoria);
+      const base = (rubro: string | null, cat: string | null) => {
+        const r = esRubro(rubro) ? rubro : detectarRubro(nombre);
+        const c = categoriaDe(nombre, r, cat);
+        return { nombre, categoria: c.id, categoriaNombre: c.nombre, fuente: (r === "super" ? "super" : "propio") as "super" | "propio" };
+      };
+      // ¿Ya está pendiente en tu lista o en la caja de Setto?
+      const mio = mios.get(k);
+      if (mio && pendiente(mio.ultima_compra, mio.frecuencia_dias)) {
+        resultados.push({ ...base(mio.rubro, mio.categoria), estado: "ya_estaba", donde: "casa", origen: "mio", itemId: mio.id });
         return;
       }
-      const { error } = await supabase.from("lista_items").insert({ lista_id: listaId, nombre, termino: nombre.toLowerCase(), cantidad: 1, categoria, rubro });
+      const s = enSetto.get(k);
+      if (s) {
+        resultados.push({ ...base(rubroElegido, categoria), estado: "ya_estaba", donde: "setto", origen: "setto", itemId: s.id, texto: k });
+        return;
+      }
+      if (mio && destino === "casa") {
+        // Ya lo compraste antes: vuelve a la lista (mismo ítem, sin duplicar)
+        await supabase.from("lista_items").update({ ultima_compra: null, ...(categoria ? { categoria, rubro: rubroElegido ?? "super" } : {}) }).eq("id", mio.id);
+        resultados.push({ ...base(categoria ? rubroElegido ?? "super" : mio.rubro, categoria ?? mio.categoria), estado: "reactivado", donde: "casa", origen: "mio", itemId: mio.id });
+        return;
+      }
+      if (destino === "setto") {
+        const id = await agregarEnSetto(supabase, nombre).catch(() => null);
+        if (id) {
+          if (categoria) alias.push({ texto: k, categoria, rubro: rubroElegido });
+          resultados.push({ ...base(rubroElegido, categoria), estado: "nuevo", donde: "setto", origen: "setto", itemId: id, texto: k });
+          return;
+        }
+      }
+      const { data, error } = await supabase.from("lista_items")
+        .insert({ lista_id: listaId, nombre, termino: nombre.toLowerCase(), cantidad: 1, categoria, rubro: rubroElegido }).select("id").single();
       if (error) throw new Error(error.message);
+      resultados.push({ ...base(rubroElegido, categoria), estado: "nuevo", donde: "casa", origen: "mio", itemId: data.id });
     }));
   }
   // Solo se pisa el rubro cuando la categoría lo implica (verdulería, bazar)
@@ -480,7 +535,22 @@ export async function agregarVarios(entrada: (string | { nombre: string; categor
   if (conRubro.length) await supabase.from("alias_productos").upsert(conRubro, { onConflict: "user_id,texto" });
   if (sinRubro.length) await supabase.from("alias_productos").upsert(sinRubro, { onConflict: "user_id,texto" });
   revalidatePath("/");
-  return { n: items.length };
+  return { n: resultados.filter((r) => r.estado !== "ya_estaba").length, resultados };
+}
+
+export type ItemAjuste = ItemLote & { categoria: string | null };
+
+/** Precio de súpers (Precios Claros) o propio (lo que pagaste / cargaste) para varios ítems. */
+export async function fuenteItems(items: ItemAjuste[], fuente: "super" | "propio") {
+  const supabase = await createClient();
+  const rubroDe = (cat: string | null) => (fuente === "super" ? "super" : rubroDeCategoria(cat) ?? "otro");
+  await Promise.all(items.map((i) =>
+    i.origen === "mio"
+      ? supabase.from("lista_items").update({ rubro: rubroDe(i.categoria) }).eq("id", i.itemId)
+      : i.texto ? supabase.from("alias_productos").upsert({ texto: i.texto, rubro: rubroDe(i.categoria) }, { onConflict: "user_id,texto" }) : Promise.resolve(),
+  ));
+  revalidatePath("/");
+  revalidatePath("/super");
 }
 
 /** Categoría de un ítem (vacío = detectarla por el nombre). La categoría define también si se compara con súpers. */

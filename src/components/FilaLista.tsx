@@ -6,8 +6,8 @@ import { pesos, porUnidad, presentacion } from "@/lib/formato";
 
 const fecha = (f: string) => { const [, m, d] = f.split("-"); return `${Number(d)}/${Number(m)}`; };
 
-export function Fila({ e, sel, seleccionando, onToggle }: {
-  e: Entrada; grupoId?: string; sel: boolean; seleccionando: boolean; onToggle: () => void;
+export function Fila({ e, sel, seleccionando, onToggle, onAjustar }: {
+  e: Entrada; grupoId?: string; sel: boolean; seleccionando: boolean; onToggle: () => void; onAjustar?: () => void;
 }) {
   const r = e.recomendado;
   // Anotado para un lugar, pero es más barato en otro súper
@@ -66,6 +66,11 @@ export function Fila({ e, sel, seleccionando, onToggle }: {
         )}
         {e.consejo && <p className="mt-1 text-sm text-marca">💡 {e.consejo}</p>}
       </Link>
+      {onAjustar && !seleccionando && (
+        <button onClick={onAjustar} aria-label="Cambiar categoría o precio" className="-mr-1 mt-0.5 shrink-0 rounded-full p-1.5 text-suave active:bg-fondo">
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></svg>
+        </button>
+      )}
     </li>
   );
 }
