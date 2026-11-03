@@ -151,8 +151,8 @@ export async function agregarALista(form: FormData) {
   const supabase = await createClient();
   const productoId = txt(form.get("producto_id"));
   const nombre = txt(form.get("nombre"));
-  // Una sola lista: lo que se agrega por nombre va a la caja de Setto (sin duplicar)
-  if (!productoId && nombre) {
+  // Por defecto va a tu lista (casa). Solo si elegís "Setto" va a la caja de Setto (sin duplicar)
+  if (!productoId && nombre && form.get("destino") === "setto") {
     const cant = num(form.get("cantidad"));
     const id = await agregarEnSetto(supabase, nombre, cant && cant > 1 ? String(cant) : null).catch(() => null);
     if (id) { revalidatePath("/"); return; }
@@ -453,7 +453,7 @@ export async function lugarItems(items: ItemLote[], lugarId: string | null, nuev
 }
 
 /** Agrega varios ítems de una (nota compartida, dictado por voz). Van a la caja de Setto sin duplicar. */
-export async function agregarVarios(entrada: (string | { nombre: string; categoria: string | null })[]) {
+export async function agregarVarios(entrada: (string | { nombre: string; categoria: string | null })[], destino: "casa" | "setto" = "casa") {
   const supabase = await createClient();
   const items = entrada
     .map((x) => (typeof x === "string" ? { nombre: x, categoria: null } : x))
@@ -466,7 +466,7 @@ export async function agregarVarios(entrada: (string | { nombre: string; categor
   for (let i = 0; i < items.length; i += 6) {
     await Promise.all(items.slice(i, i + 6).map(async ({ nombre, categoria }) => {
       const rubro = rubroDeCategoria(categoria);
-      const id = await agregarEnSetto(supabase, nombre).catch(() => null);
+      const id = destino === "setto" ? await agregarEnSetto(supabase, nombre).catch(() => null) : null;
       if (id) {
         if (categoria) alias.push({ texto: claveAlias(nombre), categoria, rubro });
         return;
@@ -563,4 +563,30 @@ export async function borrarLugar(id: string): Promise<{ error: string | null }>
   ]);
   revalidatePath("/", "layout");
   return { error: null };
+}
+
+export type ParaCasa = { itemId: string; texto: string; titulo: string };
+
+/** Pasa ítems de la caja de Setto a tu lista (casa): se crean en tu lista y en Setto quedan como "quitada". */
+export async function pasarACasa(items: ParaCasa[]) {
+  const supabase = await createClient();
+  if (!items.length) return { n: 0, settoError: null as string | null };
+  const listaId = await idListaPorDefecto(supabase);
+  const { data: alias } = await supabase.from("alias_productos")
+    .select("texto, termino, nombre, lugar_id, rubro, categoria").in("texto", items.map((i) => i.texto));
+  const porTexto = new Map((alias ?? []).map((a) => [a.texto, a]));
+  const filas = items.map((i) => {
+    const a = porTexto.get(i.texto);
+    return {
+      lista_id: listaId, nombre: i.titulo, termino: a?.termino ?? i.titulo.toLowerCase(), cantidad: 1,
+      lugar_id: a?.lugar_id ?? null, rubro: a?.rubro ?? null, categoria: a?.categoria ?? null,
+    };
+  });
+  const { error } = await supabase.from("lista_items").insert(filas);
+  if (error) throw new Error(error.message);
+  let settoError: string | null = null;
+  try { await actualizarEnSetto(supabase, items.map((i) => i.itemId), "quitada"); } catch (e) { settoError = (e as Error).message; }
+  revalidatePath("/");
+  revalidatePath("/super");
+  return { n: items.length, settoError };
 }

@@ -3,6 +3,7 @@ import { armarLista } from "@/lib/lista";
 import { pesos } from "@/lib/formato";
 import { ListaInteractiva } from "@/components/ListaInteractiva";
 import { AgregarItem } from "@/components/AgregarItem";
+import { PasarACasa } from "@/components/PasarACasa";
 import { AutoAnalizar } from "@/components/AutoAnalizar";
 import { Encabezado } from "@/components/ui";
 import { sugerirRecompra } from "@/lib/recompra";
@@ -19,6 +20,10 @@ export default async function Home() {
     sugerirRecompra(supabase, entradas.map((e) => e.termino)).catch(() => []),
     supabase.from("supermercados").select("id, nombre").eq("oculto", false).order("nombre"),
   ]);
+  // Lo cargado en Setto en las últimas 24 h (ej: la lista pegada antes de que existiera "Casa")
+  const desde = Date.now() - 24 * 3600_000;
+  const recientesSetto = entradas.filter((e) => e.origen === "setto" && e.creado && new Date(e.creado).getTime() > desde)
+    .map((e) => ({ itemId: e.itemId, texto: e.texto ?? "", titulo: e.titulo }));
   const total = grupos.reduce((a, g) => a + g.total, 0);
   const lugares = grupos.filter((g) => g.id !== "sin-precio" && g.id !== "analizando").length;
 
@@ -36,6 +41,7 @@ export default async function Home() {
           mostrar={entradas.some((e) => e.analizando)}
         />
 
+        <PasarACasa items={recientesSetto} titulo={`${recientesSetto.length} cosas se cargaron hoy en la caja de Setto. ¿Son para tu casa?`} />
         {settoError && <p className="mt-3 rounded-xl bg-alerta-suave p-3 text-sm text-alerta">No pude leer la lista de Setto: {settoError}</p>}
 
         {!entradas.length && (

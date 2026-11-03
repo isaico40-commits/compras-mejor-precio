@@ -6,18 +6,20 @@ import { agregarVarios } from "@/app/actions";
 import { parsearLista, type ItemParseado } from "@/lib/parsear";
 import { CATEGORIAS } from "@/lib/categorias";
 import { Microfono } from "@/components/Microfono";
+import { Destino } from "@/components/Destino";
 
 /** Pantalla para lo que llega compartido (Samsung Notes, WhatsApp…), por voz o por un link de rutina. */
 const nombreCat = (id: string | null) => CATEGORIAS.find((c) => c.id === id)?.nombre ?? null;
 
-export function AgregarDesdeTexto({ inicial, auto, voz }: { inicial: ItemParseado[]; auto: boolean; voz: boolean }) {
+export function AgregarDesdeTexto({ inicial, auto, voz, destinoInicial = "casa" }: { inicial: ItemParseado[]; auto: boolean; voz: boolean; destinoInicial?: "casa" | "setto" }) {
+  const [destino, setDestino] = useState<"casa" | "setto">(destinoInicial);
   const [items, setItems] = useState<{ t: string; cat: string | null; on: boolean }[]>(inicial.map((i) => ({ t: i.nombre, cat: i.categoria, on: true })));
   const [hecho, setHecho] = useState<string[] | null>(null);
   const [pendiente, start] = useTransition();
 
   const agregar = (lista: ItemParseado[]) => start(async () => {
     if (!lista.length) return;
-    await agregarVarios(lista);
+    await agregarVarios(lista, destino);
     setHecho(lista.map((i) => i.nombre));
   });
 
@@ -36,7 +38,7 @@ export function AgregarDesdeTexto({ inicial, auto, voz }: { inicial: ItemParsead
     return (
       <div className="space-y-4 text-center">
         <p className="text-4xl">✅</p>
-        <p className="text-lg font-bold">Agregado a la lista</p>
+        <p className="text-lg font-bold">Agregado {destino === "setto" ? "a la caja de Setto" : "a tu lista"}</p>
         <p className="text-suave">{hecho.join(", ")}</p>
         <div className="flex gap-2">
           <button onClick={() => { setHecho(null); setItems([]); }} className="flex-1 rounded-xl border border-linea bg-tarjeta py-3 font-semibold">Dictar más</button>
@@ -61,6 +63,7 @@ export function AgregarDesdeTexto({ inicial, auto, voz }: { inicial: ItemParsead
               </li>
             ))}
           </ul>
+          <Destino valor={destino} onCambio={setDestino} />
           <button onClick={() => agregar(elegidos)} disabled={pendiente || !elegidos.length} className="w-full rounded-xl bg-marca py-3 font-semibold text-white disabled:opacity-60">
             {pendiente ? "Agregando…" : `Agregar ${elegidos.length} a la lista`}
           </button>
