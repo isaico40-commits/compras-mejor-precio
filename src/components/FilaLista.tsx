@@ -6,8 +6,8 @@ import { pesos, porUnidad, presentacion } from "@/lib/formato";
 
 const fecha = (f: string) => { const [, m, d] = f.split("-"); return `${Number(d)}/${Number(m)}`; };
 
-export function Fila({ e, grupoId, sel, seleccionando, onToggle }: {
-  e: Entrada; grupoId: string; sel: boolean; seleccionando: boolean; onToggle: () => void;
+export function Fila({ e, sel, seleccionando, onToggle }: {
+  e: Entrada; grupoId?: string; sel: boolean; seleccionando: boolean; onToggle: () => void;
 }) {
   const r = e.recomendado;
   // Anotado para un lugar, pero es más barato en otro súper
