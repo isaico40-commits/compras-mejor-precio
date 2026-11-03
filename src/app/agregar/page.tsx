@@ -1,6 +1,6 @@
 import { Encabezado } from "@/components/ui";
 import { AgregarDesdeTexto } from "@/components/AgregarDesdeTexto";
-import { parsearItems } from "@/lib/parsear";
+import { parsearLista } from "@/lib/parsear";
 
 /**
  * /agregar recibe:
@@ -11,7 +11,7 @@ import { parsearItems } from "@/lib/parsear";
 export default async function AgregarPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
   const texto = [sp.title, sp.text, sp.item].filter(Boolean).join("\n");
-  const items = parsearItems(texto);
+  const items = parsearLista(texto);
   return (
     <main>
       <Encabezado titulo="Agregar" sub={items.length ? "Revisá y agregá a la lista" : "Dictá lo que necesitás"} />

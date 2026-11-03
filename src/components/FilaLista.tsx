@@ -10,7 +10,10 @@ export function Fila({ e, grupoId, sel, seleccionando, onToggle }: {
   e: Entrada; grupoId: string; sel: boolean; seleccionando: boolean; onToggle: () => void;
 }) {
   const r = e.recomendado;
-  const enOtroLado = r && e.lugar && r.superId !== grupoId;
+  // Anotado para un lugar, pero es más barato en otro súper
+  const enOtroLado = !!(r && e.lugar && r.superId !== e.lugar.id);
+  // Etiqueta con el súper: el anotado, o el más barato
+  const tag = e.lugar?.nombre ?? (r?.super || null);
   return (
     <li className={`flex items-start gap-3 px-3 py-3 ${sel ? "bg-marca-suave/60" : ""}`}>
       <button onClick={onToggle} aria-label={sel ? "Quitar de la selección" : "Seleccionar"} className="pt-0.5">
@@ -26,6 +29,11 @@ export function Fila({ e, grupoId, sel, seleccionando, onToggle }: {
             {e.cantidad > 1 && <span className="num text-suave">{e.cantidad}× </span>}
             {e.titulo}
             {e.cantidadTexto && <span className="font-normal text-suave"> · {e.cantidadTexto}</span>}
+            {tag && (
+              <span className={`ml-2 inline-flex max-w-40 items-center truncate rounded-full px-2 py-0.5 align-middle text-[12px] font-semibold ${e.lugar ? "bg-durazno text-durazno-tinta" : "bg-cielo text-cielo-tinta"}`}>
+                {tag}
+              </span>
+            )}
           </p>
           {r?.precio != null && !enOtroLado && (
             <span className="shrink-0 text-right">

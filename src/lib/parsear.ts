@@ -1,3 +1,5 @@
+import { tituloCategoria } from "@/lib/categorias";
+
 /**
  * Convierte texto libre (una nota, un dictado) en ítems de la lista.
  * "Azúcar, leche y yerba" / "- harina\n- 2 cremas\n☐ manteca" -> ["Azúcar", "leche", "yerba"] / ["harina", "2 cremas", "manteca"]
@@ -18,5 +20,29 @@ export function parsearItems(texto: string | null | undefined): string[] {
   const vistos = new Set<string>();
   return partes.filter((p) => { const k = p.toLowerCase(); if (vistos.has(k)) return false; vistos.add(k); return true; })
     .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-    .slice(0, 40);
+    .slice(0, 60);
+}
+
+export type ItemParseado = { nombre: string; categoria: string | null };
+
+/**
+ * Igual que parsearItems, pero entiende títulos: una línea "Verdulería" hace que
+ * todo lo que sigue (hasta el próximo título) vaya a esa categoría.
+ */
+export function parsearLista(texto: string | null | undefined): ItemParseado[] {
+  if (!texto) return [];
+  const out: ItemParseado[] = [];
+  const vistos = new Set<string>();
+  let cat: string | null = null;
+  for (const linea of texto.split(/\r?\n/)) {
+    const t = tituloCategoria(linea);
+    if (t) { cat = t; continue; }
+    for (const nombre of parsearItems(linea)) {
+      const k = nombre.toLowerCase();
+      if (vistos.has(k)) continue;
+      vistos.add(k);
+      out.push({ nombre, categoria: cat });
+    }
+  }
+  return out.slice(0, 60);
 }
