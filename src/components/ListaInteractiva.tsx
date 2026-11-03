@@ -6,7 +6,8 @@ import type { Grupo, Entrada } from "@/lib/lista";
 import { Fila } from "@/components/FilaLista";
 import { ConfirmarCompra, type ParaConfirmar } from "@/components/ConfirmarCompra";
 import { quitarItems, lugarItems, categoriaItems, pasarACasa, type ItemLote } from "@/app/actions";
-import { CATEGORIAS } from "@/lib/categorias";
+import { CATEGORIAS, categoriaDe } from "@/lib/categorias";
+import { AjusteRapido } from "@/components/AjusteRapido";
 import { tintaTono, type Tono } from "@/components/ui";
 
 // Color del grupo: el de su categoría
@@ -21,6 +22,7 @@ export function ListaInteractiva({ grupos, supers }: { grupos: Grupo[]; supers: 
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState<"comprado" | "lugar" | "categoria" | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [ajuste, setAjuste] = useState<Entrada | null>(null);
   const [pendiente, start] = useTransition();
   const [lugar, setLugar] = useState("");
   const [nuevo, setNuevo] = useState("");
@@ -69,7 +71,7 @@ export function ListaInteractiva({ grupos, supers }: { grupos: Grupo[]; supers: 
             </div>
             <ul className="divide-y divide-linea">
               {g.entradas.map((e) => (
-                <Fila key={e.key} e={e} grupoId={g.id} sel={sel.has(e.key)} seleccionando={sel.size > 0} onToggle={() => toggle(e.key)} />
+                <Fila key={e.key} e={e} grupoId={g.id} sel={sel.has(e.key)} seleccionando={sel.size > 0} onToggle={() => toggle(e.key)} onAjustar={() => setAjuste(e)} />
               ))}
             </ul>
           </section>
@@ -123,6 +125,18 @@ export function ListaInteractiva({ grupos, supers }: { grupos: Grupo[]; supers: 
           onListo={(r) => terminar(r.settoError ?? `Listo: ${r.n} comprados · ${fmt(r.total)}`)}
         />
       )}
+
+      {ajuste && (() => {
+        const c = categoriaDe(ajuste.titulo, ajuste.rubro, ajuste.categoria);
+        return (
+          <AjusteRapido
+            items={[{ origen: ajuste.origen, itemId: ajuste.itemId, texto: ajuste.texto, categoria: c.id }]}
+            titulo={ajuste.titulo} categoria={c.id} fuente={ajuste.rubro === "super" ? "super" : "propio"}
+            editarHref={`/item/${ajuste.origen}/${ajuste.itemId}`}
+            onCerrar={() => setAjuste(null)}
+          />
+        );
+      })()}
 
       {modal === "categoria" && (
         <div className="fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setModal(null)}>

@@ -3,7 +3,8 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
-import { agregarALista, agregarVarios } from "@/app/actions";
+import { agregarVarios, type ResultadoAgregar } from "@/app/actions";
+import { AjusteRapido } from "@/components/AjusteRapido";
 import { Microfono } from "@/components/Microfono";
 import { parsearItems, parsearLista } from "@/lib/parsear";
 import { Destino } from "@/components/Destino";
@@ -20,7 +21,8 @@ function Boton() {
 /** Agregar escribiendo o dictando. Si escribís o decís varias cosas ("azúcar, leche y yerba") se agregan todas. */
 export function AgregarItem() {
   const ref = useRef<HTMLFormElement>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
+  const [resultados, setResultados] = useState<ResultadoAgregar[] | null>(null);
+  const [ajustando, setAjustando] = useState<ResultadoAgregar | null>(null);
   const [, start] = useTransition();
   const router = useRouter();
   const [destino, setDestino] = useState<"casa" | "setto">("casa");
@@ -28,9 +30,8 @@ export function AgregarItem() {
   const agregarTexto = (t: string) => start(async () => {
     const items = parsearLista(t);
     if (!items.length) return;
-    await agregarVarios(items, destino);
-    setAviso(`Agregado${destino === "setto" ? " a Setto" : ""}: ${items.map((i) => i.nombre).join(", ")}`);
-    setTimeout(() => setAviso(null), 4000);
+    const r = await agregarVarios(items, destino);
+    setResultados(r.resultados);
   });
 
   return (
@@ -39,8 +40,7 @@ export function AgregarItem() {
         ref={ref}
         action={async (fd) => {
           const t = String(fd.get("nombre") ?? "");
-          if (parsearItems(t).length > 1) agregarTexto(t);
-          else await agregarALista(fd);
+          if (parsearItems(t).length) agregarTexto(t);
           ref.current?.reset();
         }}
         className="flex gap-2"
@@ -60,7 +60,41 @@ export function AgregarItem() {
         <Boton />
       </form>
       <Destino valor={destino} onCambio={setDestino} />
-      {aviso && <p className="mt-2 rounded-xl bg-marca-suave px-3 py-2 text-sm text-marca">{aviso}</p>}
+      {resultados && resultados.length > 0 && (
+        <div className="mt-2 rounded-2xl bg-menta p-3">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-[15px] font-bold text-menta-tinta">
+              {resultados.every((r) => r.estado === "ya_estaba") ? "Ya estaba en la lista" : "Agregado"}
+            </span>
+            <button onClick={() => setResultados(null)} className="text-sm font-semibold text-suave">Cerrar</button>
+          </div>
+          <ul className="space-y-1.5">
+            {resultados.map((r) => (
+              <li key={r.nombre} className="flex items-center gap-2 text-[15px]">
+                <span className="min-w-0 flex-1 truncate">
+                  <b>{r.nombre}</b>
+                  {r.estado === "ya_estaba" && <span className="text-sm text-durazno-tinta"> · ya estaba{r.donde === "setto" ? " en Setto" : ""}, no lo dupliqué</span>}
+                  {r.estado === "reactivado" && <span className="text-sm text-suave"> · lo volví a poner</span>}
+                  {r.estado === "nuevo" && r.donde === "setto" && <span className="text-sm text-suave"> · en Setto</span>}
+                </span>
+                {r.itemId && (
+                  <button onClick={() => setAjustando(r)} className="shrink-0 rounded-full bg-tarjeta px-2.5 py-1 text-sm font-semibold text-lila-tinta">
+                    {r.categoriaNombre} · {r.fuente === "super" ? "🛒" : "✍️"} ›
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {ajustando?.itemId && (
+        <AjusteRapido
+          items={[{ origen: ajustando.origen, itemId: ajustando.itemId, texto: ajustando.texto, categoria: ajustando.categoria }]}
+          titulo={ajustando.nombre} categoria={ajustando.categoria} fuente={ajustando.fuente}
+          editarHref={`/item/${ajustando.origen}/${ajustando.itemId}`}
+          onCerrar={() => setAjustando(null)}
+        />
+      )}
     </>
   );
 }
