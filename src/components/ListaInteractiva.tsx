@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import type { Grupo, Entrada } from "@/lib/lista";
 import { Fila } from "@/components/FilaLista";
 import { ConfirmarCompra, type ParaConfirmar } from "@/components/ConfirmarCompra";
-import { quitarItems, lugarItems, rubroItems, pasarACasa, type ItemLote } from "@/app/actions";
-import { RUBROS, type Rubro } from "@/lib/rubros";
+import { quitarItems, lugarItems, categoriaItems, pasarACasa, type ItemLote } from "@/app/actions";
+import { CATEGORIAS } from "@/lib/categorias";
 import { tintaTono, type Tono } from "@/components/ui";
 
 // Color del grupo: el de su categoría
@@ -19,7 +19,7 @@ const fmt = (n: number) => "$" + Math.round(n).toLocaleString("es-AR");
 export function ListaInteractiva({ grupos, supers }: { grupos: Grupo[]; supers: { id: string; nombre: string }[] }) {
   const router = useRouter();
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const [modal, setModal] = useState<"comprado" | "lugar" | "rubro" | null>(null);
+  const [modal, setModal] = useState<"comprado" | "lugar" | "categoria" | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [pendiente, start] = useTransition();
   const [lugar, setLugar] = useState("");
@@ -86,7 +86,7 @@ export function ListaInteractiva({ grupos, supers }: { grupos: Grupo[]; supers: 
             <div className="grid grid-cols-3 gap-2 text-sm font-semibold">
               <button onClick={() => setModal("comprado")} className="rounded-xl bg-marca py-2.5">Comprado</button>
               <button onClick={() => { setLugar(""); setNuevo(""); setModal("lugar"); }} className="rounded-xl bg-white/15 py-2.5">Dónde</button>
-              <button onClick={() => setModal("rubro")} className="rounded-xl bg-white/15 py-2.5">Rubro</button>
+              <button onClick={() => setModal("categoria")} className="rounded-xl bg-white/15 py-2.5">Categoría</button>
               <button
                 disabled={pendiente || !elegidas.some((e) => e.origen === "setto")}
                 onClick={() => {
@@ -124,21 +124,21 @@ export function ListaInteractiva({ grupos, supers }: { grupos: Grupo[]; supers: 
         />
       )}
 
-      {modal === "rubro" && (
+      {modal === "categoria" && (
         <div className="fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setModal(null)}>
-          <div className="mx-auto w-full max-w-xl rounded-t-3xl bg-fondo p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={(e) => e.stopPropagation()}>
+          <div className="mx-auto max-h-[85dvh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-fondo p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={(e) => e.stopPropagation()}>
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-linea" />
-            <p className="text-lg font-bold">¿Qué son estos {sel.size}?</p>
-            <p className="mb-3 text-sm text-suave">Lo que no es de súper no se compara con Precios Claros: te muestro lo último que pagaste.</p>
+            <p className="text-lg font-bold">¿En qué categoría van estos {sel.size}?</p>
+            <p className="mb-3 text-sm text-suave">Verdulería, Bazar y Otro comercio no se comparan con los súpers: te muestro lo último que pagaste.</p>
             <div className="grid grid-cols-2 gap-2">
-              {RUBROS.map((r) => (
-                <button key={r.id} disabled={pendiente}
-                  onClick={() => start(async () => { await rubroItems(lote(elegidas), r.id as Rubro); terminar(`Listo: ${r.nombre}.`); })}
-                  className="rounded-xl border border-linea bg-tarjeta py-3 font-semibold disabled:opacity-60">{r.nombre}</button>
+              {CATEGORIAS.map((c) => (
+                <button key={c.id} disabled={pendiente}
+                  onClick={() => start(async () => { await categoriaItems(lote(elegidas), c.id); terminar(`Listo: ${c.nombre}.`); })}
+                  className="rounded-xl border border-linea bg-tarjeta px-2 py-3 text-sm font-semibold disabled:opacity-60">{c.nombre}</button>
               ))}
             </div>
-            <button disabled={pendiente} onClick={() => start(async () => { await rubroItems(lote(elegidas), null); terminar("Listo: rubro automático."); })}
-              className="mt-2 w-full py-2 text-sm font-semibold text-suave">Que lo detecte solo</button>
+            <button disabled={pendiente} onClick={() => start(async () => { await categoriaItems(lote(elegidas), null); terminar("Listo: categoría automática."); })}
+              className="mt-2 w-full py-2 text-sm font-semibold text-suave">Que la detecte sola</button>
           </div>
         </div>
       )}

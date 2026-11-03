@@ -20,6 +20,7 @@ export const CATEGORIAS: Categoria[] = [
   { id: "higiene", nombre: "Higiene y perfumería", tono: "lila", palabras: "shampoo champu acondicionador jabon desodorante cepillo toallitas toallas algodon afeitadora maquinita protector perfume crema|pasta dental|papel higienico" },
   { id: "bazar", nombre: "Bazar", tono: "durazno", palabras: "" },
   { id: "mascotas", nombre: "Mascotas", tono: "durazno", palabras: "alimento|piedras sanitarias" },
+  { id: "otro_comercio", nombre: "Otro comercio (papelera, ferretería…)", tono: "durazno", palabras: "" },
   { id: "otros", nombre: "Otros", tono: "limon", palabras: "" },
 ];
 
@@ -44,6 +45,7 @@ export function categoriaDe(nombre: string, rubro: Rubro, elegida?: string | nul
   const formas = [primera, primera.replace(/es$/, ""), primera.replace(/s$/, "")];
   for (const { c, palabras } of indice) if (formas.some((f) => palabras.has(f))) return c;
   if (rubro === "bazar") return porId("bazar");
+  if (rubro === "otro") return porId("otro_comercio");
   return porId("otros");
 }
 
@@ -63,4 +65,4 @@ export function tituloCategoria(linea: string): string | null {
 }
 /** Rubro que implica una categoría (lo que no se compara con los súpers). */
 export const rubroDeCategoria = (id: string | null | undefined): Rubro | null =>
-  id === "verduleria" ? "verduleria" : id === "bazar" ? "bazar" : null;
+  id === "verduleria" ? "verduleria" : id === "bazar" ? "bazar" : id === "otro_comercio" ? "otro" : null;

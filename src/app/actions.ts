@@ -483,19 +483,35 @@ export async function agregarVarios(entrada: (string | { nombre: string; categor
   return { n: items.length };
 }
 
-/** Categoría de un ítem (vacío = detectarla por el nombre). */
+/** Categoría de un ítem (vacío = detectarla por el nombre). La categoría define también si se compara con súpers. */
 export async function guardarCategoria(form: FormData) {
   const supabase = await createClient();
   const cat = txt(form.get("categoria"));
   const categoria = cat && CATEGORIAS.some((c) => c.id === cat) ? cat : null;
+  // Verdulería, bazar y otro comercio no se comparan con súpers; el resto sí
+  const rubro = categoria ? rubroDeCategoria(categoria) ?? "super" : null;
   const origen = String(form.get("origen"));
   if (origen === "mio") {
-    await supabase.from("lista_items").update({ categoria }).eq("id", String(form.get("id")));
+    await supabase.from("lista_items").update({ categoria, rubro }).eq("id", String(form.get("id")));
   } else {
-    await supabase.from("alias_productos").upsert({ texto: String(form.get("texto")), categoria }, { onConflict: "user_id,texto" });
+    await supabase.from("alias_productos").upsert({ texto: String(form.get("texto")), categoria, rubro }, { onConflict: "user_id,texto" });
   }
   revalidatePath("/");
+  revalidatePath("/super");
   revalidatePath(`/item/${origen}/${String(form.get("id"))}`);
+}
+
+/** Categoría de varios ítems (null = automática). */
+export async function categoriaItems(items: ItemLote[], cat: string | null) {
+  const supabase = await createClient();
+  const categoria = cat && CATEGORIAS.some((c) => c.id === cat) ? cat : null;
+  const rubro = categoria ? rubroDeCategoria(categoria) ?? "super" : null;
+  const mios = items.filter((i) => i.origen === "mio").map((i) => i.itemId);
+  if (mios.length) await supabase.from("lista_items").update({ categoria, rubro }).in("id", mios);
+  const setto = items.filter((i) => i.origen === "setto" && i.texto);
+  if (setto.length) await supabase.from("alias_productos").upsert(setto.map((i) => ({ texto: i.texto!, categoria, rubro })), { onConflict: "user_id,texto" });
+  revalidatePath("/");
+  revalidatePath("/super");
 }
 
 /** Rubro de varios ítems (null = detectarlo por el nombre) */

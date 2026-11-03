@@ -5,7 +5,7 @@ import { pendientesConAlias, limpiarItem } from "@/lib/setto";
 import { pesos, porUnidad, presentacion } from "@/lib/formato";
 import { guardarItem, borrarItem, guardarSetto, guardarHabitual, guardarPagado, guardarCategoria } from "@/app/actions";
 import { CATEGORIAS, categoriaDe } from "@/lib/categorias";
-import { detectarRubro, esRubro, nombreRubro, RUBROS, type Rubro } from "@/lib/rubros";
+import { detectarRubro, esRubro, nombreRubro, type Rubro } from "@/lib/rubros";
 import { claveCompra } from "@/lib/lista";
 import { Encabezado, Pill, Tarjeta, Titulo, ayudaCls, inputCls, btnCls, btnSecCls, btnSobre } from "@/components/ui";
 import type { Opcion } from "@/lib/lista";
@@ -85,27 +85,13 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
           </form>
         </Tarjeta>
 
-        <Tarjeta tono="lila" className="p-4">
-          <form action={guardar} className="space-y-2">
-            {ocultos}
-            <Titulo tono="lila">Qué es</Titulo>
-            <div className="flex gap-2">
-              <select name="rubro" defaultValue={rubroElegido ?? ""} className={inputCls}>
-                <option value="">Automático ({nombreRubro(rubroAuto)})</option>
-                {RUBROS.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-              </select>
-              <button className={btnSobre("lila")}>Guardar</button>
-            </div>
-            <p className={ayudaCls}>{enSuper ? "Se compara con los precios de los súpers." : "No se compara con los súpers: te muestro lo último que pagaste."}</p>
-          </form>
-        </Tarjeta>
 
         <Tarjeta tono="lila" className="p-4">
           <form action={guardarCategoria} className="space-y-2">
             <input type="hidden" name="id" value={id} />
             <input type="hidden" name="origen" value={origen} />
             {!esMio && <input type="hidden" name="texto" value={texto} />}
-            <Titulo tono="lila">Categoría en la lista</Titulo>
+            <Titulo tono="lila">Categoría</Titulo>
             <div className="flex gap-2">
               <select name="categoria" defaultValue={categoriaElegida ?? ""} className={inputCls}>
                 <option value="">Automática ({categoriaAuto.nombre})</option>
@@ -113,6 +99,7 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
               </select>
               <button className={btnSobre("lila")}>Guardar</button>
             </div>
+            <p className={ayudaCls}>{enSuper ? "Se compara con los precios de los súpers." : "No se compara con los súpers: te muestro lo último que pagaste."}</p>
           </form>
         </Tarjeta>
 
