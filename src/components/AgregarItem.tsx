@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { agregarALista, agregarVarios } from "@/app/actions";
 import { Microfono } from "@/components/Microfono";
-import { parsearItems } from "@/lib/parsear";
+import { parsearItems, parsearLista } from "@/lib/parsear";
 
 function Boton() {
   const { pending } = useFormStatus();
@@ -20,12 +21,13 @@ export function AgregarItem() {
   const ref = useRef<HTMLFormElement>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [, start] = useTransition();
+  const router = useRouter();
 
   const agregarTexto = (t: string) => start(async () => {
-    const items = parsearItems(t);
+    const items = parsearLista(t);
     if (!items.length) return;
     await agregarVarios(items);
-    setAviso(`Agregado: ${items.join(", ")}`);
+    setAviso(`Agregado: ${items.map((i) => i.nombre).join(", ")}`);
     setTimeout(() => setAviso(null), 4000);
   });
 
@@ -44,6 +46,11 @@ export function AgregarItem() {
         <input
           name="nombre" required autoComplete="off" enterKeyHint="done"
           placeholder="Agregar: azúcar, leche, yerba…"
+          onPaste={(ev) => {
+            // Una lista pegada (una cosa por renglón, con títulos tipo "Verdulería") se revisa antes de agregar
+            const t = ev.clipboardData.getData("text");
+            if (/\r?\n/.test(t.trim())) { ev.preventDefault(); router.push(`/agregar?text=${encodeURIComponent(t)}`); }
+          }}
           className="w-full rounded-xl border border-linea bg-tarjeta px-3 py-2.5 text-[15px] outline-none focus:border-marca"
         />
         <Microfono onTexto={agregarTexto} />

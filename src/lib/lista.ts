@@ -34,6 +34,7 @@ export type Entrada = {
   consejo: string | null;
   rubro: Rubro;
   rubroAuto: boolean;   // detectado por el nombre (no elegido)
+  categoria: string | null;   // elegida (null = por el nombre)
   ultimoPago: { precio: number | null; fecha: string; lugar: string | null } | null;
 };
 
@@ -59,7 +60,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
   const [{ data: items }, settoRes] = await Promise.all([
     supabase
       .from("lista_items")
-      .select("id, nombre, termino, cantidad, frecuencia_dias, ultima_compra, lugar_id, rubro, supermercados(id, nombre), productos(id, nombre, nombre_base, dim, cant_base)")
+      .select("id, nombre, termino, cantidad, frecuencia_dias, ultima_compra, lugar_id, rubro, categoria, supermercados(id, nombre), productos(id, nombre, nombre_base, dim, cant_base)")
       .order("created_at"),
     pendientesConAlias(supabase).then((r) => ({ data: r, error: null as string | null })).catch((e: Error) => ({ data: null, error: e.message })),
   ]);
@@ -88,7 +89,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
       dim: p?.dim ?? null,
       producto: p ? { id: p.id, nombre: p.nombre, cant_base: p.cant_base, dim: p.dim } : null,
       lugar: l, ultimaCompra: i.ultima_compra, frecuencia: i.frecuencia_dias,
-      ...rubroDe(i.rubro, i.nombre ?? p?.nombre ?? ""),
+      ...rubroDe(i.rubro, i.nombre ?? p?.nombre ?? ""), categoria: i.categoria ?? null,
     });
   }
   for (const s of settoRes.data ?? []) {
@@ -100,7 +101,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
       dim: a?.dim ?? null,
       producto: a?.producto_id ? { id: a.producto_id, nombre: a.nombre ?? "", cant_base: a.cant, dim: a.dim } : null,
       lugar: s.lugar, ultimaCompra: null, frecuencia: null,
-      ...rubroDe(a?.rubro, a?.nombreItem || s.item),
+      ...rubroDe(a?.rubro, a?.nombreItem || s.item), categoria: a?.categoria ?? null,
     });
   }
 
@@ -234,7 +235,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
   // Para mostrar: agrupado por categoría (el súper va como etiqueta en cada ítem)
   const cats = new Map<string, Grupo>();
   for (const g of orden) for (const e of g.entradas) {
-    const c = categoriaDe(e.titulo, e.rubro);
+    const c = categoriaDe(e.titulo, e.rubro, e.categoria);
     const cg = cats.get(c.id) ?? { id: `cat-${c.id}`, nombre: c.nombre, entradas: [], total: 0, anotado: false, tono: c.tono };
     cg.entradas.push(e);
     if (!e.lugar || e.lugar.id === e.recomendado?.superId) cg.total += (e.recomendado?.precio ?? 0) * e.cantidad;

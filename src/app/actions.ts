@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { esRubro, type Rubro } from "@/lib/rubros";
-import { marcarEnSetto, actualizarEnSetto, agregarEnSetto } from "@/lib/setto";
+import { CATEGORIAS, rubroDeCategoria } from "@/lib/categorias";
+import { marcarEnSetto, actualizarEnSetto, agregarEnSetto, claveAlias } from "@/lib/setto";
 
 const num = (v: FormDataEntryValue | null) => (v === null || v === "" ? null : Number(v));
 const txt = (v: FormDataEntryValue | null) => (v === null || v === "" ? null : String(v).trim());
@@ -452,20 +453,49 @@ export async function lugarItems(items: ItemLote[], lugarId: string | null, nuev
 }
 
 /** Agrega varios ítems de una (nota compartida, dictado por voz). Van a la caja de Setto sin duplicar. */
-export async function agregarVarios(nombres: string[]) {
+export async function agregarVarios(entrada: (string | { nombre: string; categoria: string | null })[]) {
   const supabase = await createClient();
-  let n = 0;
-  for (const nombre of nombres.map((x) => x.trim()).filter(Boolean).slice(0, 40)) {
-    const id = await agregarEnSetto(supabase, nombre).catch(() => null);
-    if (!id) {
-      const listaId = await idListaPorDefecto(supabase);
-      const { error } = await supabase.from("lista_items").insert({ lista_id: listaId, nombre, termino: nombre.toLowerCase(), cantidad: 1 });
+  const items = entrada
+    .map((x) => (typeof x === "string" ? { nombre: x, categoria: null } : x))
+    .map((x) => ({ nombre: x.nombre.trim(), categoria: x.categoria && CATEGORIAS.some((c) => c.id === x.categoria) ? x.categoria : null }))
+    .filter((x) => x.nombre)
+    .slice(0, 60);
+  const listaId = await idListaPorDefecto(supabase);
+  const alias: { texto: string; categoria: string; rubro: string | null }[] = [];
+  // De a 6 en paralelo: una lista pegada de 20 cosas no tarda 20 viajes
+  for (let i = 0; i < items.length; i += 6) {
+    await Promise.all(items.slice(i, i + 6).map(async ({ nombre, categoria }) => {
+      const rubro = rubroDeCategoria(categoria);
+      const id = await agregarEnSetto(supabase, nombre).catch(() => null);
+      if (id) {
+        if (categoria) alias.push({ texto: claveAlias(nombre), categoria, rubro });
+        return;
+      }
+      const { error } = await supabase.from("lista_items").insert({ lista_id: listaId, nombre, termino: nombre.toLowerCase(), cantidad: 1, categoria, rubro });
       if (error) throw new Error(error.message);
-    }
-    n++;
+    }));
+  }
+  // Solo se pisa el rubro cuando la categoría lo implica (verdulería, bazar)
+  const conRubro = alias.filter((a) => a.rubro), sinRubro = alias.filter((a) => !a.rubro).map(({ texto, categoria }) => ({ texto, categoria }));
+  if (conRubro.length) await supabase.from("alias_productos").upsert(conRubro, { onConflict: "user_id,texto" });
+  if (sinRubro.length) await supabase.from("alias_productos").upsert(sinRubro, { onConflict: "user_id,texto" });
+  revalidatePath("/");
+  return { n: items.length };
+}
+
+/** Categoría de un ítem (vacío = detectarla por el nombre). */
+export async function guardarCategoria(form: FormData) {
+  const supabase = await createClient();
+  const cat = txt(form.get("categoria"));
+  const categoria = cat && CATEGORIAS.some((c) => c.id === cat) ? cat : null;
+  const origen = String(form.get("origen"));
+  if (origen === "mio") {
+    await supabase.from("lista_items").update({ categoria }).eq("id", String(form.get("id")));
+  } else {
+    await supabase.from("alias_productos").upsert({ texto: String(form.get("texto")), categoria }, { onConflict: "user_id,texto" });
   }
   revalidatePath("/");
-  return { n };
+  revalidatePath(`/item/${origen}/${String(form.get("id"))}`);
 }
 
 /** Rubro de varios ítems (null = detectarlo por el nombre) */

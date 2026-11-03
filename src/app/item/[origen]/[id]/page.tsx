@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { pendientesConAlias, limpiarItem } from "@/lib/setto";
 import { pesos, porUnidad, presentacion } from "@/lib/formato";
-import { guardarItem, borrarItem, guardarSetto, guardarHabitual, guardarPagado } from "@/app/actions";
+import { guardarItem, borrarItem, guardarSetto, guardarHabitual, guardarPagado, guardarCategoria } from "@/app/actions";
+import { CATEGORIAS, categoriaDe } from "@/lib/categorias";
 import { detectarRubro, esRubro, nombreRubro, RUBROS, type Rubro } from "@/lib/rubros";
 import { claveCompra } from "@/lib/lista";
 import { Encabezado, Pill, Tarjeta, Titulo, ayudaCls, inputCls, btnCls, btnSecCls, btnSobre } from "@/components/ui";
@@ -16,13 +17,13 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
   const esMio = origen === "mio";
 
   let titulo = "", termino = "", dim: string | null = null, productoId: string | null = null, productoNombre: string | null = null;
-  let rubroElegido: Rubro | null = null;
+  let rubroElegido: Rubro | null = null, categoriaElegida: string | null = null;
   let cantidad = 1, frecuencia: number | null = null, lugarId: string | null = null, texto = "", donde: string | null = null, lugarSetto: string | null = null;
 
   if (esMio) {
     const { data: i } = await supabase
       .from("lista_items")
-      .select("id, nombre, termino, cantidad, frecuencia_dias, lugar_id, rubro, productos(id, nombre, nombre_base, dim)")
+      .select("id, nombre, termino, cantidad, frecuencia_dias, lugar_id, rubro, categoria, productos(id, nombre, nombre_base, dim)")
       .eq("id", id).maybeSingle();
     if (!i) notFound();
     const p = i.productos as unknown as { id: string; nombre: string; nombre_base: string; dim: string } | null;
@@ -31,6 +32,7 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
     dim = p?.dim ?? null; productoId = p?.id ?? null; productoNombre = p?.nombre ?? null;
     cantidad = Number(i.cantidad); frecuencia = i.frecuencia_dias; lugarId = i.lugar_id;
     rubroElegido = esRubro(i.rubro) ? i.rubro : null;
+    categoriaElegida = i.categoria ?? null;
   } else {
     const pend = await pendientesConAlias(supabase);
     const s = pend?.find((x) => x.id === id);
@@ -39,10 +41,12 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
     termino = s.alias?.termino || (s.alias?.nombreItem?.toLowerCase() ?? "") || s.busqueda || limpiarItem(s.item);
     dim = s.alias?.dim ?? null; productoId = s.alias?.producto_id ?? null; productoNombre = s.alias?.nombre ?? null;
     rubroElegido = esRubro(s.alias?.rubro) ? (s.alias!.rubro as Rubro) : null;
+    categoriaElegida = s.alias?.categoria ?? null;
   }
   const rubroAuto = detectarRubro(titulo);
   const rubro = rubroElegido ?? rubroAuto;
   const enSuper = rubro === "super";
+  const categoriaAuto = categoriaDe(titulo, rubro);
 
   const [{ data: ops }, { data: lugares }, { data: pagos }, { data: hab }] = await Promise.all([
     enSuper ? supabase.rpc("opciones_termino2", { p_termino: termino, p_dim: dim, p_limite: 10 }) : Promise.resolve({ data: [] }),
@@ -93,6 +97,22 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
               <button className={btnSobre("lila")}>Guardar</button>
             </div>
             <p className={ayudaCls}>{enSuper ? "Se compara con los precios de los súpers." : "No se compara con los súpers: te muestro lo último que pagaste."}</p>
+          </form>
+        </Tarjeta>
+
+        <Tarjeta tono="lila" className="p-4">
+          <form action={guardarCategoria} className="space-y-2">
+            <input type="hidden" name="id" value={id} />
+            <input type="hidden" name="origen" value={origen} />
+            {!esMio && <input type="hidden" name="texto" value={texto} />}
+            <Titulo tono="lila">Categoría en la lista</Titulo>
+            <div className="flex gap-2">
+              <select name="categoria" defaultValue={categoriaElegida ?? ""} className={inputCls}>
+                <option value="">Automática ({categoriaAuto.nombre})</option>
+                {CATEGORIAS.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+              <button className={btnSobre("lila")}>Guardar</button>
+            </div>
           </form>
         </Tarjeta>
 

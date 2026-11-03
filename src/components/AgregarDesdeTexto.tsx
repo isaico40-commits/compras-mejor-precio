@@ -3,19 +3,22 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { agregarVarios } from "@/app/actions";
-import { parsearItems } from "@/lib/parsear";
+import { parsearLista, type ItemParseado } from "@/lib/parsear";
+import { CATEGORIAS } from "@/lib/categorias";
 import { Microfono } from "@/components/Microfono";
 
 /** Pantalla para lo que llega compartido (Samsung Notes, WhatsApp…), por voz o por un link de rutina. */
-export function AgregarDesdeTexto({ inicial, auto, voz }: { inicial: string[]; auto: boolean; voz: boolean }) {
-  const [items, setItems] = useState<{ t: string; on: boolean }[]>(inicial.map((t) => ({ t, on: true })));
+const nombreCat = (id: string | null) => CATEGORIAS.find((c) => c.id === id)?.nombre ?? null;
+
+export function AgregarDesdeTexto({ inicial, auto, voz }: { inicial: ItemParseado[]; auto: boolean; voz: boolean }) {
+  const [items, setItems] = useState<{ t: string; cat: string | null; on: boolean }[]>(inicial.map((i) => ({ t: i.nombre, cat: i.categoria, on: true })));
   const [hecho, setHecho] = useState<string[] | null>(null);
   const [pendiente, start] = useTransition();
 
-  const agregar = (lista: string[]) => start(async () => {
+  const agregar = (lista: ItemParseado[]) => start(async () => {
     if (!lista.length) return;
     await agregarVarios(lista);
-    setHecho(lista);
+    setHecho(lista.map((i) => i.nombre));
   });
 
   useEffect(() => {
@@ -24,9 +27,9 @@ export function AgregarDesdeTexto({ inicial, auto, voz }: { inicial: string[]; a
   }, []);
 
   const sumarDictado = (t: string) => {
-    const nuevos = parsearItems(t).filter((n) => !items.some((i) => i.t.toLowerCase() === n.toLowerCase()));
+    const nuevos = parsearLista(t).filter((n) => !items.some((i) => i.t.toLowerCase() === n.nombre.toLowerCase()));
     if (voz && !items.length) { agregar(nuevos); return; }   // dictado directo: se agrega sin más pasos
-    setItems([...items, ...nuevos.map((x) => ({ t: x, on: true }))]);
+    setItems([...items, ...nuevos.map((x) => ({ t: x.nombre, cat: x.categoria, on: true }))]);
   };
 
   if (hecho) {
@@ -43,7 +46,7 @@ export function AgregarDesdeTexto({ inicial, auto, voz }: { inicial: string[]; a
     );
   }
 
-  const elegidos = items.filter((i) => i.on).map((i) => i.t);
+  const elegidos = items.filter((i) => i.on).map((i) => ({ nombre: i.t, categoria: i.cat }));
   return (
     <div className="space-y-5">
       <Microfono onTexto={sumarDictado} auto={voz} grande />
@@ -54,6 +57,7 @@ export function AgregarDesdeTexto({ inicial, auto, voz }: { inicial: string[]; a
               <li key={k} className="flex items-center gap-3 px-3 py-2">
                 <input type="checkbox" checked={i.on} onChange={() => setItems(items.map((x, j) => (j === k ? { ...x, on: !x.on } : x)))} className="h-5 w-5 accent-[var(--color-marca)]" />
                 <input value={i.t} onChange={(e) => setItems(items.map((x, j) => (j === k ? { ...x, t: e.target.value } : x)))} className="w-full bg-transparent py-1 text-[15px] outline-none" />
+                {i.cat && <span className="shrink-0 rounded-full bg-menta px-2 py-0.5 text-[12px] font-semibold text-menta-tinta">{nombreCat(i.cat)}</span>}
               </li>
             ))}
           </ul>

@@ -30,7 +30,9 @@ const indice = CATEGORIAS.map((c) => {
 const RELLENO = new Set("kg kgs kilo kilos gr grs gramos lt lts litro litros un unidad unidades medio media docena cuarto de del x bolsa paquete pack".split(" "));
 
 /** Categoría para agrupar la lista. Lo de verdulería / bazar sale del rubro. */
-export function categoriaDe(nombre: string, rubro: Rubro): Categoria {
+export function categoriaDe(nombre: string, rubro: Rubro, elegida?: string | null): Categoria {
+  const fija = elegida ? CATEGORIAS.find((c) => c.id === elegida) : undefined;
+  if (fija) return fija;
   const n = normalizar(nombre).replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
   const porId = (id: string) => CATEGORIAS.find((c) => c.id === id)!;
   // Frases primero ("dulce de leche" es lácteo, "papel higienico" es higiene)
@@ -44,3 +46,21 @@ export function categoriaDe(nombre: string, rubro: Rubro): Categoria {
   if (rubro === "bazar") return porId("bazar");
   return porId("otros");
 }
+
+// Títulos que se pueden poner en una lista pegada: "Verdulería", "Carnicería:", "DIETÉTICA"
+const TITULOS: Record<string, string> = {
+  verduleria: "verduleria", verdu: "verduleria", verduras: "verduleria", frutas: "verduleria", "frutas y verduras": "verduleria", "fruta y verdura": "verduleria",
+  lacteos: "lacteos", almacen: "almacen", dietetica: "dietetica", bebidas: "bebidas",
+  carniceria: "carniceria", carnes: "carniceria", fiambreria: "fiambres", fiambres: "fiambres",
+  panaderia: "panaderia", congelados: "congelados", descartables: "descartables", packaging: "descartables",
+  limpieza: "limpieza", higiene: "higiene", perfumeria: "higiene", "higiene y perfumeria": "higiene",
+  bazar: "bazar", mascotas: "mascotas", otros: "otros",
+};
+/** Si la línea es un título de categoría, devuelve su id. */
+export function tituloCategoria(linea: string): string | null {
+  const n = normalizar(linea).replace(/[:\-–•*#]+/g, " ").replace(/\s+/g, " ").trim();
+  return TITULOS[n] ?? null;
+}
+/** Rubro que implica una categoría (lo que no se compara con los súpers). */
+export const rubroDeCategoria = (id: string | null | undefined): Rubro | null =>
+  id === "verduleria" ? "verduleria" : id === "bazar" ? "bazar" : null;
