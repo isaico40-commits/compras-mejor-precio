@@ -16,7 +16,7 @@ export default async function AgregarPage({ searchParams }: { searchParams: Prom
     <main>
       <Encabezado titulo="Agregar" sub={items.length ? "Revisá y agregá a la lista" : "Dictá lo que necesitás"} />
       <div className="px-4">
-        <AgregarDesdeTexto inicial={items} auto={sp.auto === "1"} voz={sp.voz === "1"} />
+        <AgregarDesdeTexto inicial={items} auto={sp.auto === "1"} voz={sp.voz === "1"} destinoInicial={sp.destino === "setto" ? "setto" : "casa"} />
       </div>
     </main>
   );

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Grupo, Entrada } from "@/lib/lista";
 import { Fila } from "@/components/FilaLista";
 import { ConfirmarCompra, type ParaConfirmar } from "@/components/ConfirmarCompra";
-import { quitarItems, lugarItems, rubroItems, type ItemLote } from "@/app/actions";
+import { quitarItems, lugarItems, rubroItems, pasarACasa, type ItemLote } from "@/app/actions";
 import { RUBROS, type Rubro } from "@/lib/rubros";
 import { tintaTono, type Tono } from "@/components/ui";
 
@@ -83,10 +83,23 @@ export function ListaInteractiva({ grupos, supers }: { grupos: Grupo[]; supers: 
               <span>{sel.size} seleccionado{sel.size === 1 ? "" : "s"}</span>
               <button onClick={() => setSel(new Set())} className="opacity-75">Cancelar</button>
             </div>
-            <div className="grid grid-cols-4 gap-2 text-sm font-semibold">
+            <div className="grid grid-cols-3 gap-2 text-sm font-semibold">
               <button onClick={() => setModal("comprado")} className="rounded-xl bg-marca py-2.5">Comprado</button>
               <button onClick={() => { setLugar(""); setNuevo(""); setModal("lugar"); }} className="rounded-xl bg-white/15 py-2.5">Dónde</button>
               <button onClick={() => setModal("rubro")} className="rounded-xl bg-white/15 py-2.5">Rubro</button>
+              <button
+                disabled={pendiente || !elegidas.some((e) => e.origen === "setto")}
+                onClick={() => {
+                  const setto = elegidas.filter((e) => e.origen === "setto");
+                  start(async () => {
+                    const r = await pasarACasa(setto.map((e) => ({ itemId: e.itemId, texto: e.texto ?? "", titulo: e.titulo })));
+                    terminar(r.settoError ?? `Listo: ${r.n} pasados a tu lista (casa).`);
+                  });
+                }}
+                className="rounded-xl bg-white/15 py-2.5 disabled:opacity-40"
+              >
+                🏠 A casa
+              </button>
               <button
                 disabled={pendiente}
                 onClick={() => {

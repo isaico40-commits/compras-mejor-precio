@@ -35,6 +35,7 @@ export type Entrada = {
   rubro: Rubro;
   rubroAuto: boolean;   // detectado por el nombre (no elegido)
   categoria: string | null;   // elegida (null = por el nombre)
+  creado?: string;            // cuándo se cargó (ítems de Setto)
   ultimoPago: { precio: number | null; fecha: string; lugar: string | null } | null;
 };
 
@@ -101,7 +102,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
       dim: a?.dim ?? null,
       producto: a?.producto_id ? { id: a.producto_id, nombre: a.nombre ?? "", cant_base: a.cant, dim: a.dim } : null,
       lugar: s.lugar, ultimaCompra: null, frecuencia: null,
-      ...rubroDe(a?.rubro, a?.nombreItem || s.item), categoria: a?.categoria ?? null,
+      ...rubroDe(a?.rubro, a?.nombreItem || s.item), categoria: a?.categoria ?? null, creado: s.created_at,
     });
   }
 

@@ -6,6 +6,7 @@ import { useFormStatus } from "react-dom";
 import { agregarALista, agregarVarios } from "@/app/actions";
 import { Microfono } from "@/components/Microfono";
 import { parsearItems, parsearLista } from "@/lib/parsear";
+import { Destino } from "@/components/Destino";
 
 function Boton() {
   const { pending } = useFormStatus();
@@ -22,12 +23,13 @@ export function AgregarItem() {
   const [aviso, setAviso] = useState<string | null>(null);
   const [, start] = useTransition();
   const router = useRouter();
+  const [destino, setDestino] = useState<"casa" | "setto">("casa");
 
   const agregarTexto = (t: string) => start(async () => {
     const items = parsearLista(t);
     if (!items.length) return;
-    await agregarVarios(items);
-    setAviso(`Agregado: ${items.map((i) => i.nombre).join(", ")}`);
+    await agregarVarios(items, destino);
+    setAviso(`Agregado${destino === "setto" ? " a Setto" : ""}: ${items.map((i) => i.nombre).join(", ")}`);
     setTimeout(() => setAviso(null), 4000);
   });
 
@@ -43,19 +45,21 @@ export function AgregarItem() {
         }}
         className="flex gap-2"
       >
+        <input type="hidden" name="destino" value={destino} />
         <input
           name="nombre" required autoComplete="off" enterKeyHint="done"
           placeholder="Agregar: azúcar, leche, yerba…"
           onPaste={(ev) => {
             // Una lista pegada (una cosa por renglón, con títulos tipo "Verdulería") se revisa antes de agregar
             const t = ev.clipboardData.getData("text");
-            if (/\r?\n/.test(t.trim())) { ev.preventDefault(); router.push(`/agregar?text=${encodeURIComponent(t)}`); }
+            if (/\r?\n/.test(t.trim())) { ev.preventDefault(); router.push(`/agregar?text=${encodeURIComponent(t)}${destino === "setto" ? "&destino=setto" : ""}`); }
           }}
           className="w-full rounded-xl border border-linea bg-tarjeta px-3 py-2.5 text-[15px] outline-none focus:border-marca"
         />
         <Microfono onTexto={agregarTexto} />
         <Boton />
       </form>
+      <Destino valor={destino} onCambio={setDestino} />
       {aviso && <p className="mt-2 rounded-xl bg-marca-suave px-3 py-2 text-sm text-marca">{aviso}</p>}
     </>
   );
