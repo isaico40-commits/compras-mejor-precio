@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { esRubro, detectarRubro, type Rubro } from "@/lib/rubros";
 import { CATEGORIAS, rubroDeCategoria, categoriaDe } from "@/lib/categorias";
 import { marcarEnSetto, actualizarEnSetto, agregarEnSetto, claveAlias, leerPendientesSetto } from "@/lib/setto";
+import { unirTermino } from "@/lib/formato";
 
 const num = (v: FormDataEntryValue | null) => (v === null || v === "" ? null : Number(v));
 const txt = (v: FormDataEntryValue | null) => (v === null || v === "" ? null : String(v).trim());
@@ -172,8 +173,35 @@ export async function agregarALista(form: FormData) {
   revalidatePath("/");
 }
 
+/** Filtros de rendimiento (hoja, metros por rollo) -> se guardan dentro del término: "papel higienico | doble | 30m" */
+function componerTermino(form: FormData) {
+  if (!form.has("filtro_base")) return;
+  const hoja = txt(form.get("filtro_hoja"));
+  const min = num(form.get("filtro_min"));
+  form.set("termino", unirTermino(String(form.get("filtro_base")), hoja && ["simple", "doble", "triple"].includes(hoja) ? hoja : null, min && min > 0 ? Math.round(min) : null));
+}
+
+/** Corrección a mano de metros / rollos / hoja de un producto (papel higiénico) */
+export async function guardarRendimiento(form: FormData) {
+  const supabase = await createClient();
+  const metrosRollo = num(form.get("metros_rollo"));
+  const rollos = num(form.get("rollos"));
+  const total = num(form.get("metros")) ?? (metrosRollo && rollos ? metrosRollo * rollos : null);
+  const hoja = txt(form.get("hoja"));
+  const { error } = await supabase.rpc("guardar_rendimiento", {
+    p_producto: String(form.get("producto_id")),
+    p_metros: total, p_rollos: rollos ? Math.round(rollos) : null,
+    p_hoja: hoja && ["simple", "doble", "triple"].includes(hoja) ? hoja : null,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/");
+  const volver = txt(form.get("volver_a"));
+  if (volver?.startsWith("/item/")) revalidatePath(volver);
+}
+
 /** Guarda los ajustes de un ítem propio. */
 export async function guardarItem(form: FormData) {
+  componerTermino(form);
   const supabase = await createClient();
   const id = String(form.get("id"));
   const cambios: Record<string, unknown> = {};
@@ -203,6 +231,7 @@ export async function borrarItem(form: FormData) {
 
 /** Ajustes de un ítem de Setto: término de búsqueda y producto fijado (se guardan como alias). */
 export async function guardarSetto(form: FormData) {
+  componerTermino(form);
   const supabase = await createClient();
   const texto = String(form.get("texto"));
   const { data: actual } = await supabase.from("alias_productos").select("termino, producto_id, nombre, lugar_id, rubro").eq("texto", texto).maybeSingle();
