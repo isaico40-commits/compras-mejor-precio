@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { pendientesConAlias } from "@/lib/setto";
-import { palabraDim, presentacion } from "@/lib/formato";
+import { palabraDim, presentacion, pesos as pesosTxt } from "@/lib/formato";
 import { categoriaDe, CATEGORIAS } from "@/lib/categorias";
 import { detectarRubro, esRubro, RUBROS, type Rubro } from "@/lib/rubros";
 import { leerDescuentos, mejorDescuento, hoyAR, textoDescuento, type Descuento } from "@/lib/descuentos";
@@ -30,13 +30,15 @@ export type Entrada = {
   ultimaCompra: string | null;
   frecuencia: number | null;
   analizando: boolean;
-  recomendado: { superId: string; super: string; precio: number | null; nombre: string; porUnidad: number | null; dim: string | null; cant: number | null } | null;
+  recomendado: { superId: string; super: string; precio: number | null; nombre: string; porUnidad: number | null; dim: string | null; cant: number | null; productoId?: string | null } | null;
   consejo: string | null;
   rubro: Rubro;
   rubroAuto: boolean;   // detectado por el nombre (no elegido)
   categoria: string | null;   // elegida (null = por el nombre)
   creado?: string;            // cuándo se cargó (ítems de Setto)
   ultimoPago: { precio: number | null; fecha: string; lugar: string | null } | null;
+  precioAlerta?: number | null;   // "avisame si baja de $X"
+  alerta?: { tipo: "umbral" | "minimo"; texto: string } | null;
 };
 
 /** Cuánto sale todo en un solo súper vs. dividir la compra en dos. */
@@ -60,7 +62,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
   const [{ data: items }, settoRes] = await Promise.all([
     supabase
       .from("lista_items")
-      .select("id, nombre, termino, cantidad, frecuencia_dias, ultima_compra, lugar_id, rubro, categoria, supermercados(id, nombre), productos(id, nombre, nombre_base, dim, cant_base)")
+      .select("id, nombre, termino, cantidad, frecuencia_dias, ultima_compra, lugar_id, rubro, categoria, precio_alerta, supermercados(id, nombre), productos(id, nombre, nombre_base, dim, cant_base)")
       .order("created_at"),
     pendientesConAlias(supabase).then((r) => ({ data: r, error: null as string | null })).catch((e: Error) => ({ data: null, error: e.message })),
   ]);
@@ -90,6 +92,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
       producto: p ? { id: p.id, nombre: p.nombre, cant_base: p.cant_base, dim: p.dim } : null,
       lugar: l, ultimaCompra: i.ultima_compra, frecuencia: i.frecuencia_dias,
       ...rubroDe(i.rubro, i.nombre ?? p?.nombre ?? ""), categoria: i.categoria ?? null,
+      precioAlerta: i.precio_alerta != null ? Number(i.precio_alerta) : null,
     });
   }
   for (const s of settoRes.data ?? []) {
@@ -102,6 +105,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
       producto: a?.producto_id ? { id: a.producto_id, nombre: a.nombre ?? "", cant_base: a.cant, dim: a.dim } : null,
       lugar: s.lugar, ultimaCompra: null, frecuencia: null,
       ...rubroDe(a?.rubro, a?.nombreItem || s.item), categoria: a?.categoria ?? null, creado: s.created_at,
+      precioAlerta: a?.precioAlerta ?? null,
     });
   }
 
@@ -172,7 +176,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
       const f = fijoPorId.get(e.producto.id);
       if (f?.mejor_precio != null && f.mejor_super) {
         const pu = e.producto.cant_base ? Number(f.mejor_precio) / Number(e.producto.cant_base) : null;
-        e.recomendado = { superId: "", super: f.mejor_super, precio: Number(f.mejor_precio), nombre: e.producto.nombre, porUnidad: pu, dim: e.producto.dim, cant: e.producto.cant_base };
+        e.recomendado = { superId: "", super: f.mejor_super, precio: Number(f.mejor_precio), nombre: e.producto.nombre, porUnidad: pu, dim: e.producto.dim, cant: e.producto.cant_base, productoId: e.producto.id };
         if (mejor?.pu && pu && Number(mejor.pu) < pu * 0.95 && mejor.producto_id !== e.producto.id) {
           const ahorro = Math.round((1 - Number(mejor.pu) / pu) * 100);
           e.consejo = `En ${mejor.super}, ${mejor.nombre}: ${ahorro}% menos por ${palabraDim(an?.dim ?? null)}`;
@@ -180,7 +184,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
       }
     }
     if (!e.recomendado && mejor) {
-      e.recomendado = { superId: mejor.super_id, super: mejor.super, precio: Number(mejor.precio), nombre: mejor.nombre, porUnidad: mejor.pu, dim: an?.dim ?? null, cant: Number(mejor.cant) };
+      e.recomendado = { superId: mejor.super_id, super: mejor.super, precio: Number(mejor.precio), nombre: mejor.nombre, porUnidad: mejor.pu, dim: an?.dim ?? null, cant: Number(mejor.cant), productoId: mejor.producto_id };
     }
     if (!e.consejo && mejor?.pu && an?.mediana && an.n >= 3) {
       const ahorro = Math.round((1 - Number(mejor.pu) / Number(an.mediana)) * 100);
@@ -190,6 +194,28 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
       }
     }
   });
+
+  // Alertas: bajó de tu tope, o el mejor producto está en su precio más bajo de los últimos 30 días
+  const idsRec = [...new Set(entradas.filter((e) => e.rubro === "super" && e.recomendado?.productoId).map((e) => e.recomendado!.productoId!))];
+  const { data: hist } = idsRec.length
+    ? await supabase.rpc("historial_30d", { p_productos: idsRec })
+    : { data: [] };
+  const histDe = new Map(((hist as { producto_id: string; actual: number; minimo: number; maximo: number; fechas: number }[] | null) ?? []).map((h) => [h.producto_id, h]));
+  for (const e of entradas) {
+    const r = e.recomendado;
+    if (!r || r.precio == null || e.rubro !== "super") continue;
+    if (e.precioAlerta && r.precio <= e.precioAlerta) {
+      e.alerta = { tipo: "umbral", texto: `${r.super}: ${pesosTxt(r.precio)} (tu tope ${pesosTxt(e.precioAlerta)})` };
+      continue;
+    }
+    const h = r.productoId ? histDe.get(r.productoId) : undefined;
+    // Necesita historia (2+ días de precios) y que haya variado al menos 8%
+    if (h && h.fechas >= 2 && Number(h.maximo) >= Number(h.minimo) * 1.08 && r.precio <= Number(h.minimo) * 1.01) {
+      const baja = Math.round((1 - r.precio / Number(h.maximo)) * 100);
+      e.alerta = { tipo: "minimo", texto: `${r.super}: ${pesosTxt(r.precio)}, el más bajo del mes (${baja}% menos que el más caro)` };
+    }
+  }
+  const alertas = entradas.filter((e) => e.alerta);
 
   // Agrupar: lo anotado para un lugar va ahí; si no, al súper más barato
   const superPorNombre = new Map((supers ?? []).map((s) => [s.nombre, s.id]));
@@ -244,7 +270,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
   const porCategoria = CATEGORIAS.map((c) => cats.get(c.id)).filter((g): g is Grupo => !!g);
   for (const g of porCategoria) g.entradas.sort((a, b) => Number(b.urgente) - Number(a.urgente) || a.titulo.localeCompare(b.titulo));
 
-  return { grupos: orden, porCategoria, entradas, settoError: settoRes.error, porAnalizar, plan, descuentos };
+  return { grupos: orden, porCategoria, entradas, settoError: settoRes.error, porAnalizar, plan, descuentos, alertas };
 }
 
 function planDelViaje(items: { titulo: string; m: Map<string, number> }[], nombres: Map<string, string>, promos: Map<string, Descuento>): PlanViaje | null {
