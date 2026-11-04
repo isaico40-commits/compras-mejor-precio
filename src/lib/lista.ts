@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { pendientesConAlias } from "@/lib/setto";
-import { presentacion } from "@/lib/formato";
+import { palabraDim, presentacion } from "@/lib/formato";
 import { categoriaDe, CATEGORIAS } from "@/lib/categorias";
 import { detectarRubro, esRubro, RUBROS, type Rubro } from "@/lib/rubros";
 import { leerDescuentos, mejorDescuento, hoyAR, textoDescuento, type Descuento } from "@/lib/descuentos";
@@ -54,7 +54,6 @@ export const claveCompra = (t: string) => t.normalize("NFD").replace(/[\u0300-\u
 const VIGENCIA_MS = 12 * 3600_000;
 const dosPalabras = (s: string | null | undefined) =>
   (s ?? "").split(" ").filter((w) => w.length > 2).slice(0, 2).join(" ");
-const palabraDim = (d: string | null) => (d === "l" ? "litro" : d === "u" ? "unidad" : "kilo");
 
 /** Junta tu lista y los pendientes de Setto, y usa el análisis de precios ya guardado. */
 export async function armarLista(supabase: SupabaseClient, opts: { incluirComprados?: boolean } = {}) {
