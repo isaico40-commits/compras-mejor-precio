@@ -178,7 +178,7 @@ function componerTermino(form: FormData) {
   if (!form.has("filtro_base")) return;
   const hoja = txt(form.get("filtro_hoja"));
   const min = num(form.get("filtro_min"));
-  form.set("termino", unirTermino(String(form.get("filtro_base")), hoja && ["simple", "doble", "triple"].includes(hoja) ? hoja : null, min && min > 0 ? Math.round(min) : null));
+  form.set("termino", unirTermino(String(form.get("filtro_base")), hoja && ["simple", "doble", "triple"].includes(hoja) ? hoja : null, min && min > 0 ? Math.round(min) : null, txt(form.get("filtro_texto"))));
 }
 
 /** Corrección a mano de metros / rollos / hoja de un producto (papel higiénico) */
