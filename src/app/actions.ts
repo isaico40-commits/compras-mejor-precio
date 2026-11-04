@@ -212,6 +212,7 @@ export async function guardarItem(form: FormData) {
   }
   if (form.has("cantidad")) cambios.cantidad = num(form.get("cantidad")) ?? 1;
   if (form.has("frecuencia_dias")) cambios.frecuencia_dias = num(form.get("frecuencia_dias"));
+  if (form.has("precio_alerta")) { const v = num(form.get("precio_alerta")); cambios.precio_alerta = v && v > 0 ? v : null; }
   if (form.has("lugar_id") || form.has("nuevo_lugar")) cambios.lugar_id = await resolverLugar(supabase, form, "lugar_id");
   if (form.has("producto_id")) cambios.producto_id = txt(form.get("producto_id"));
   if (form.has("rubro")) { const r = txt(form.get("rubro")); cambios.rubro = esRubro(r) ? r : null; }
@@ -234,7 +235,7 @@ export async function guardarSetto(form: FormData) {
   componerTermino(form);
   const supabase = await createClient();
   const texto = String(form.get("texto"));
-  const { data: actual } = await supabase.from("alias_productos").select("termino, producto_id, nombre, lugar_id, rubro").eq("texto", texto).maybeSingle();
+  const { data: actual } = await supabase.from("alias_productos").select("termino, producto_id, nombre, lugar_id, rubro, precio_alerta").eq("texto", texto).maybeSingle();
   const nombre = form.has("nombre") ? txt(form.get("nombre")) : actual?.nombre ?? null;
   const fila = {
     texto,
@@ -245,6 +246,7 @@ export async function guardarSetto(form: FormData) {
     producto_id: form.has("producto_id") ? txt(form.get("producto_id")) : actual?.producto_id ?? null,
     lugar_id: form.has("lugar_id") || form.has("nuevo_lugar") ? await resolverLugar(supabase, form, "lugar_id") : actual?.lugar_id ?? null,
     rubro: form.has("rubro") ? (esRubro(txt(form.get("rubro"))) ? txt(form.get("rubro")) : null) : actual?.rubro ?? null,
+    precio_alerta: form.has("precio_alerta") ? (() => { const v = num(form.get("precio_alerta")); return v && v > 0 ? v : null; })() : actual?.precio_alerta ?? null,
   };
   const { error } = await supabase.from("alias_productos").upsert(fila, { onConflict: "user_id,texto" });
   if (error) throw new Error(error.message);

@@ -18,13 +18,13 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
   const esMio = origen === "mio";
 
   let titulo = "", termino = "", dim: string | null = null, productoId: string | null = null, productoNombre: string | null = null;
-  let rubroElegido: Rubro | null = null, categoriaElegida: string | null = null;
+  let rubroElegido: Rubro | null = null, categoriaElegida: string | null = null, precioAlerta: number | null = null;
   let cantidad = 1, frecuencia: number | null = null, lugarId: string | null = null, texto = "", donde: string | null = null, lugarSetto: string | null = null;
 
   if (esMio) {
     const { data: i } = await supabase
       .from("lista_items")
-      .select("id, nombre, termino, cantidad, frecuencia_dias, lugar_id, rubro, categoria, productos(id, nombre, nombre_base, dim)")
+      .select("id, nombre, termino, cantidad, frecuencia_dias, lugar_id, rubro, categoria, precio_alerta, productos(id, nombre, nombre_base, dim)")
       .eq("id", id).maybeSingle();
     if (!i) notFound();
     const p = i.productos as unknown as { id: string; nombre: string; nombre_base: string; dim: string } | null;
@@ -34,6 +34,7 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
     cantidad = Number(i.cantidad); frecuencia = i.frecuencia_dias; lugarId = i.lugar_id;
     rubroElegido = esRubro(i.rubro) ? i.rubro : null;
     categoriaElegida = i.categoria ?? null;
+    precioAlerta = i.precio_alerta != null ? Number(i.precio_alerta) : null;
   } else {
     const pend = await pendientesConAlias(supabase);
     const s = pend?.find((x) => x.id === id);
@@ -43,6 +44,7 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
     dim = s.alias?.dim ?? null; productoId = s.alias?.producto_id ?? null; productoNombre = s.alias?.nombre ?? null;
     rubroElegido = esRubro(s.alias?.rubro) ? (s.alias!.rubro as Rubro) : null;
     categoriaElegida = s.alias?.categoria ?? null;
+    precioAlerta = s.alias?.precioAlerta ?? null;
   }
   const rubroAuto = detectarRubro(titulo);
   const rubro = rubroElegido ?? rubroAuto;
@@ -194,6 +196,20 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
             <p className={ayudaCls}>Usá palabras genéricas: “azucar comun”, “leche entera”, “crema de leche”.</p>
           </form>
         </Tarjeta>}
+
+        {enSuper && (
+          <Tarjeta tono="durazno" className="p-4">
+            <form action={guardar} className="space-y-2">
+              {ocultos}
+              <Titulo tono="durazno">Avisame si baja de</Titulo>
+              <div className="flex gap-2">
+                <input name="precio_alerta" type="number" inputMode="decimal" min="0" step="any" defaultValue={precioAlerta ?? ""} placeholder="$ (vacío = sin tope)" className={inputCls} />
+                <button className={btnSobre("durazno")}>Guardar</button>
+              </div>
+              <p className={ayudaCls}>Te lo marco arriba de la lista cuando el mejor precio{opciones[0] ? ` (hoy ${pesos(opciones[0].precio)})` : ""} quede por debajo. También te aviso solo cuando está en su precio más bajo del mes.</p>
+            </form>
+          </Tarjeta>
+        )}
 
         {enSuper && !productoId && (
           <Tarjeta tono="limon" className="p-4">

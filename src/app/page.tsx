@@ -13,7 +13,7 @@ import { DIAS, hoyAR, textoDescuento } from "@/lib/descuentos";
 
 export default async function Home() {
   const supabase = await createClient();
-  const { grupos, porCategoria, entradas, settoError, porAnalizar, plan, descuentos } = await armarLista(supabase);
+  const { grupos, porCategoria, entradas, settoError, porAnalizar, plan, descuentos, alertas } = await armarLista(supabase);
   const { dia } = hoyAR();
   const promosHoy = descuentos.filter((d) => d.dias.includes(dia));
   const [recompra, { data: supers }] = await Promise.all([
@@ -49,6 +49,22 @@ export default async function Home() {
             <p className="text-4xl">🛒</p>
             <p className="mt-2">Escribí arriba lo que necesitás comprar.</p>
           </div>
+        )}
+
+        {alertas.length > 0 && (
+          <section className="mt-4 overflow-hidden rounded-2xl bg-durazno">
+            <p className="px-4 pt-3 text-[15px] font-bold text-durazno-tinta">Bajaron de precio</p>
+            <ul className="divide-y divide-durazno-tinta/10">
+              {alertas.map((e) => (
+                <li key={e.key}>
+                  <Link href={`/item/${e.origen}/${e.itemId}`} className="block px-4 py-3 active:opacity-80">
+                    <span className="block font-medium">{e.alerta!.tipo === "umbral" ? "🔔 " : "📉 "}{e.titulo}</span>
+                    <span className="block text-sm text-suave">{e.alerta!.texto}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         <Link href="/descuentos" className="mt-4 block rounded-2xl bg-limon px-4 py-3 active:opacity-80">
