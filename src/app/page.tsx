@@ -13,7 +13,7 @@ import { DIAS, hoyAR, textoDescuento } from "@/lib/descuentos";
 
 export default async function Home() {
   const supabase = await createClient();
-  const { grupos, porCategoria, entradas, settoError, porAnalizar, plan, descuentos, alertas } = await armarLista(supabase);
+  const { grupos, porCategoria, entradas, settoError, porAnalizar, plan, descuentos, alertas, volumen } = await armarLista(supabase);
   const { dia } = hoyAR();
   const promosHoy = descuentos.filter((d) => d.dias.includes(dia));
   const [recompra, { data: supers }] = await Promise.all([
@@ -64,6 +64,30 @@ export default async function Home() {
                 </li>
               ))}
             </ul>
+          </section>
+        )}
+
+        {(volumen.stock.length > 0 || volumen.packs.length > 0) && (
+          <section className="mt-4 rounded-2xl bg-menta p-4">
+            <p className="text-[15px] font-bold text-menta-tinta">Conviene llevar de más</p>
+            <p className="text-sm text-suave">Solo en lo que no se vence: almacén, bebidas, limpieza, higiene, descartables y mascotas.</p>
+            {volumen.stock.map((s) => (
+              <p key={s.super} className="mt-2 text-[15px]">
+                <b>Hoy en {s.super}</b> ({s.promo}): buen día para stockear {s.items.slice(0, 5).join(", ")}{s.items.length > 5 ? ` y ${s.items.length - 5} más` : ""}.
+              </p>
+            ))}
+            {volumen.packs.length > 0 && (
+              <ul className="mt-2 space-y-1.5">
+                {volumen.packs.slice(0, 6).map((e) => (
+                  <li key={e.key}>
+                    <Link href={`/item/${e.origen}/${e.itemId}`} className="block active:opacity-80">
+                      <span className="font-medium">📦 {e.titulo}</span>
+                      <span className="block text-sm text-suave">{e.pack}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         )}
 

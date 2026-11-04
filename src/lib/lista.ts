@@ -12,7 +12,7 @@ export type Opcion = {
 
 /** Opción guardada en el análisis (tabla sugerencias) */
 type OpcionGuardada = { producto_id: string; nombre: string; super_id: string; super: string; precio: number; cant: number; pu: number | null };
-type Analisis = { dim: string | null; n: number; mediana: number | null; chica: number | null; opciones: OpcionGuardada[]; por_super?: Record<string, { precio: number; pu: number | null }>; v?: number };
+type Analisis = { dim: string | null; n: number; mediana: number | null; chica: number | null; pu_chico?: number | null; opciones: OpcionGuardada[]; por_super?: Record<string, { precio: number; pu: number | null }>; v?: number };
 
 export type Entrada = {
   key: string;
@@ -39,6 +39,15 @@ export type Entrada = {
   ultimoPago: { precio: number | null; fecha: string; lugar: string | null } | null;
   precioAlerta?: number | null;   // "avisame si baja de $X"
   alerta?: { tipo: "umbral" | "minimo"; texto: string } | null;
+  pack?: string | null;   // "conviene el pack grande"
+};
+
+/** Categorías que no vencen rápido: ahí conviene llevar de más o el pack grande */
+export const NO_PERECEDEROS = new Set(["almacen", "bebidas", "limpieza", "higiene", "descartables", "mascotas"]);
+
+export type Volumen = {
+  packs: Entrada[];
+  stock: { super: string; promo: string; porcentaje: number; items: string[] }[];
 };
 
 /** Cuánto sale todo en un solo súper vs. dividir la compra en dos. */
@@ -186,6 +195,11 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
     if (!e.recomendado && mejor) {
       e.recomendado = { superId: mejor.super_id, super: mejor.super, precio: Number(mejor.precio), nombre: mejor.nombre, porUnidad: mejor.pu, dim: an?.dim ?? null, cant: Number(mejor.cant), productoId: mejor.producto_id };
     }
+    // Pack grande: la opción más barata por unidad es 2× o más la chica y sale 15%+ menos que las chicas
+    if (mejor?.pu && an?.pu_chico && an.chica && Number(mejor.cant) >= Number(an.chica) * 2 && Number(mejor.pu) <= Number(an.pu_chico) * 0.85) {
+      const menos = Math.round((1 - Number(mejor.pu) / Number(an.pu_chico)) * 100);
+      e.pack = `${presentacion(mejor.cant, an.dim) || mejor.nombre} en ${mejor.super}: ${menos}% menos por ${palabraDim(an.dim)} que el chico`;
+    }
     if (!e.consejo && mejor?.pu && an?.mediana && an.n >= 3) {
       const ahorro = Math.round((1 - Number(mejor.pu) / Number(an.mediana)) * 100);
       const grande = an.chica != null && Number(mejor.cant) >= Number(an.chica) * 2;
@@ -258,6 +272,23 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
   for (const p of precios) for (const [sid, v] of p.m) { const d = promoHoy.get(sid); if (d) p.m.set(sid, v * (1 - d.porcentaje / 100)); }
   const plan = planDelViaje(precios, nombreSuper, promoHoy);
 
+  // Comprar por volumen: packs grandes y días con descuento fuerte, solo en lo que no vence
+  const noVence = (e: Entrada) => e.rubro === "super" && NO_PERECEDEROS.has(categoriaDe(e.titulo, e.rubro, e.categoria).id);
+  const stockPorSuper = new Map<string, Volumen["stock"][number]>();
+  for (const e of entradas) {
+    if (!noVence(e) || !e.recomendado) continue;
+    const sid = e.recomendado.superId;
+    const d = promoHoy.get(sid);
+    if (!d || d.porcentaje < 20) continue;
+    const s = stockPorSuper.get(sid) ?? { super: e.recomendado.super, promo: textoDescuento(d), porcentaje: d.porcentaje, items: [] };
+    s.items.push(e.titulo);
+    stockPorSuper.set(sid, s);
+  }
+  const volumen: Volumen = {
+    packs: entradas.filter((e) => e.pack && noVence(e)),
+    stock: [...stockPorSuper.values()].sort((a, b) => b.porcentaje - a.porcentaje),
+  };
+
   // Para mostrar: agrupado por categoría (el súper va como etiqueta en cada ítem)
   const cats = new Map<string, Grupo>();
   for (const g of orden) for (const e of g.entradas) {
@@ -270,7 +301,7 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
   const porCategoria = CATEGORIAS.map((c) => cats.get(c.id)).filter((g): g is Grupo => !!g);
   for (const g of porCategoria) g.entradas.sort((a, b) => Number(b.urgente) - Number(a.urgente) || a.titulo.localeCompare(b.titulo));
 
-  return { grupos: orden, porCategoria, entradas, settoError: settoRes.error, porAnalizar, plan, descuentos, alertas };
+  return { grupos: orden, porCategoria, entradas, settoError: settoRes.error, porAnalizar, plan, descuentos, alertas, volumen };
 }
 
 function planDelViaje(items: { titulo: string; m: Map<string, number> }[], nombres: Map<string, string>, promos: Map<string, Descuento>): PlanViaje | null {
