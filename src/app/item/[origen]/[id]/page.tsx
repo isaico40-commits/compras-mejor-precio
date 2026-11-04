@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { pendientesConAlias, limpiarItem } from "@/lib/setto";
-import { pesos, porUnidad, presentacion, palabraDim, esPorMetro, partirTermino } from "@/lib/formato";
+import { pesos, porUnidad, presentacion, palabraDim, esPorMetro, esRolloCocina, partirTermino } from "@/lib/formato";
 import { leerDescuentos, mejorDescuento, ahorroCon, textoDescuento, hoyAR } from "@/lib/descuentos";
 import { guardarItem, borrarItem, guardarSetto, guardarHabitual, guardarPagado, guardarCategoria, guardarRendimiento } from "@/app/actions";
 import { CATEGORIAS, categoriaDe } from "@/lib/categorias";
@@ -51,6 +51,8 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
 
   const filtro = partirTermino(termino);
   const porMetro = enSuper && esPorMetro(filtro.base || titulo);
+  const porPano = enSuper && !porMetro && esRolloCocina(filtro.base || titulo);
+  const rendimiento = porMetro || porPano;
   const [{ data: ops }, { data: lugares }, { data: pagos }, { data: hab }, descuentos, { data: sinLeer }] = await Promise.all([
     enSuper ? supabase.rpc("opciones_termino2", { p_termino: termino, p_dim: dim, p_limite: 10 }) : Promise.resolve({ data: [] }),
     supabase.from("supermercados").select("id, nombre").eq("oculto", false).order("nombre"),
@@ -60,6 +62,8 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
     enSuper ? leerDescuentos(supabase) : Promise.resolve([]),
     porMetro
       ? supabase.from("productos").select("id, nombre").neq("dim", "m").or("nombre_base.ilike.papel higien%,nombre_base.ilike.p higien%").limit(15)
+      : porPano
+      ? supabase.from("productos").select("id, nombre").neq("dim", "p").or("nombre_base.ilike.rollo%coc%,nombre_base.ilike.toalla de cocina%").limit(15)
       : Promise.resolve({ data: [] }),
   ]);
   const historial = (pagos as { precio: number | null; fecha: string; supermercados: unknown }[] | null) ?? [];
@@ -73,11 +77,11 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
     return { ...o, desc: ahorro > 0 ? d : null, conDesc, puFinal: o.por_unidad != null ? (conDesc ?? Number(o.precio)) / Number(o.cant_base || 1) : null };
   }).sort((a, b) => (a.puFinal ?? Infinity) - (b.puFinal ?? Infinity));
   const hayDescuento = opciones.some((o) => o.desc);
-  const { data: rend } = porMetro && opciones.length
+  const { data: rend } = rendimiento && opciones.length
     ? await supabase.from("productos").select("id, rollos, hoja").in("id", opciones.map((o) => o.producto_id))
     : { data: [] };
   const rendDe = new Map(((rend as { id: string; rollos: number | null; hoja: string | null }[] | null) ?? []).map((r) => [r.id, r]));
-  const sinMetros = ((sinLeer as { id: string; nombre: string }[] | null) ?? []).filter((p) => esPorMetro(p.nombre) && !/toalla|palito|porta/i.test(p.nombre));
+  const sinMetros = ((sinLeer as { id: string; nombre: string }[] | null) ?? []).filter((p) => (porMetro ? esPorMetro(p.nombre) && !/toalla|palito|porta/i.test(p.nombre) : esRolloCocina(p.nombre) && !/porta|soporte/i.test(p.nombre)));
   const volverA = `/item/${origen}/${id}`;
   const guardar = esMio ? guardarItem : guardarSetto;
   const ocultos = (
@@ -180,23 +184,28 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
           <form action={guardar} className="space-y-2">
             {ocultos}
             <Titulo>Buscar como</Titulo>
-            {porMetro && <><input type="hidden" name="filtro_hoja" value={filtro.hoja ?? ""} /><input type="hidden" name="filtro_min" value={filtro.minRollo ?? ""} /></>}
+            <input type="hidden" name="filtro_hoja" value={filtro.hoja ?? ""} />
+            <input type="hidden" name="filtro_min" value={filtro.minRollo ?? ""} />
+            <input type="hidden" name="filtro_texto" value={filtro.texto} />
             <div className="flex gap-2">
-              <input name={porMetro ? "filtro_base" : "termino"} defaultValue={porMetro ? filtro.base : termino} className={inputCls} />
+              <input name="filtro_base" defaultValue={filtro.base} className={inputCls} />
               <button className={btnSecCls}>Buscar</button>
             </div>
             <p className={ayudaCls}>Usá palabras genéricas: “azucar comun”, “leche entera”, “crema de leche”.</p>
           </form>
         </Tarjeta>}
 
-        {porMetro && (
+        {enSuper && !productoId && (
           <Tarjeta tono="limon" className="p-4">
             <form action={guardar} className="space-y-3">
               {ocultos}
               <input type="hidden" name="filtro_base" value={filtro.base} />
-              <Titulo tono="limon">Cualquier marca: comparo por metro</Titulo>
-              <p className={ayudaCls}>Leo rollos × metros de cada paquete y te muestro el que sale menos por metro{hayDescuento ? ", con el descuento de hoy" : ""}.</p>
-              <fieldset>
+              <Titulo tono="limon">Cualquier marca: comparo por {palabraDim(porMetro ? "m" : porPano ? "p" : dim ?? opciones[0]?.dim)}</Titulo>
+              <p className={ayudaCls}>
+                {porMetro ? "Leo rollos × metros de cada paquete" : porPano ? "Leo los paños de cada paquete" : "Leo el tamaño de cada paquete (kilos, litros o unidades del pack)"} y te muestro el que sale menos{hayDescuento ? ", con el descuento de hoy" : ""}.
+              </p>
+              {!rendimiento && <input type="hidden" name="filtro_hoja" value={filtro.hoja ?? ""} />}
+              {rendimiento && <fieldset>
                 <legend className="mb-1 text-sm font-semibold text-limon-tinta">Hoja</legend>
                 <div className="flex flex-wrap gap-2">
                   {[["", "Cualquiera"], ["simple", "Simple"], ["doble", "Doble o triple"]].map(([v, l]) => (
@@ -206,9 +215,12 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
                     </label>
                   ))}
                 </div>
-              </fieldset>
-              <label className="block text-sm font-semibold text-limon-tinta">Metros mínimos por rollo
+              </fieldset>}
+              {porMetro && <label className="block text-sm font-semibold text-limon-tinta">Metros mínimos por rollo
                 <input name="filtro_min" type="number" inputMode="numeric" min="0" max="500" defaultValue={filtro.minRollo ?? ""} placeholder="Sin mínimo (ej. 30)" className={`${inputCls} mt-1`} />
+              </label>}
+              <label className="block text-sm font-semibold text-limon-tinta">Solo los que digan
+                <input name="filtro_texto" defaultValue={filtro.texto} placeholder="Ej.: XG · 60x90 · AA (separá con coma)" className={`${inputCls} mt-1`} />
               </label>
               <button className={`${btnSobre("limon")} w-full`}>Aplicar</button>
             </form>
@@ -227,7 +239,7 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
         </Link>
 
         {enSuper && <section>
-          <h2 className="mb-2 px-1 text-[15px] font-bold">Opciones más baratas por {palabraDim(porMetro ? "m" : dim ?? opciones[0]?.dim)}{hayDescuento ? " (con descuento de hoy)" : ""}</h2>
+          <h2 className="mb-2 px-1 text-[15px] font-bold">Opciones más baratas por {palabraDim(porMetro ? "m" : porPano ? "p" : dim ?? opciones[0]?.dim)}{hayDescuento ? " (con descuento de hoy)" : ""}</h2>
           {productoId && (
             <div className="mb-2 flex items-center justify-between rounded-2xl bg-marca-suave px-4 py-3 text-sm">
               <span>Fijado: <b>{productoNombre}</b></span>
@@ -266,25 +278,25 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
               </li>
               );
             })}
-            {!opciones.length && <li className="px-4 py-6 text-center text-sm text-suave">No encontré “{filtro.base || termino}” en los súpers{filtro.hoja || filtro.minRollo ? " con esos filtros" : ""}. Probá con otra palabra.</li>}
+            {!opciones.length && <li className="px-4 py-6 text-center text-sm text-suave">No encontré “{filtro.base || termino}” en los súpers{filtro.hoja || filtro.minRollo || filtro.texto ? " con esos filtros" : ""}. Probá con otra palabra.</li>}
           </ul>
-          {porMetro && (
+          {rendimiento && (
             <details className="mt-3 rounded-2xl bg-tarjeta px-4 py-3">
-              <summary className="cursor-pointer text-[15px] font-bold">Corregir metros {sinMetros.length ? `(${sinMetros.length} sin leer)` : ""}</summary>
-              <p className={`${ayudaCls} mt-1`}>Si un paquete no dice los metros o los leí mal, cargalo acá y entra en la comparación.</p>
+              <summary className="cursor-pointer text-[15px] font-bold">Corregir {porMetro ? "metros" : "paños"} {sinMetros.length ? `(${sinMetros.length} sin leer)` : ""}</summary>
+              <p className={`${ayudaCls} mt-1`}>Si un paquete no dice los {porMetro ? "metros" : "paños"} o los leí mal, cargalo acá y entra en la comparación.</p>
               <ul className="mt-2 divide-y divide-linea">
                 {[...sinMetros.map((p) => ({ id: p.id, nombre: p.nombre, rollos: null as number | null, mpr: null as number | null, hoja: null as string | null, falta: true })),
                   ...opciones.map((o) => { const r = rendDe.get(o.producto_id); return { id: o.producto_id, nombre: o.nombre, rollos: r?.rollos ?? null, mpr: r?.rollos ? Math.round(Number(o.cant_base) / r.rollos) : null, hoja: r?.hoja ?? null, falta: false }; }),
                 ].map((p) => (
                   <li key={p.id} className="py-3">
-                    <p className="text-sm leading-snug">{p.falta && <span className="font-semibold text-durazno-tinta">Sin metros · </span>}{p.nombre}</p>
+                    <p className="text-sm leading-snug">{p.falta && <span className="font-semibold text-durazno-tinta">Sin {porMetro ? "metros" : "paños"} · </span>}{p.nombre}</p>
                     <form action={guardarRendimiento} className="mt-2 grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-2">
                       <input type="hidden" name="producto_id" value={p.id} />
                       <input type="hidden" name="volver_a" value={volverA} />
                       <label className="text-xs font-semibold text-suave">Rollos
                         <input name="rollos" type="number" inputMode="numeric" min="1" required defaultValue={p.rollos ?? ""} className={`${inputCls} mt-1`} />
                       </label>
-                      <label className="text-xs font-semibold text-suave">m por rollo
+                      <label className="text-xs font-semibold text-suave">{porMetro ? "m" : "Paños"} por rollo
                         <input name="metros_rollo" type="number" inputMode="decimal" min="1" step="any" required defaultValue={p.mpr ?? ""} className={`${inputCls} mt-1`} />
                       </label>
                       <label className="text-xs font-semibold text-suave">Hoja
