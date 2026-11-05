@@ -38,7 +38,7 @@ export type Entrada = {
   creado?: string;            // cuándo se cargó (ítems de Setto)
   ultimoPago: { precio: number | null; fecha: string; lugar: string | null } | null;
   precioAlerta?: number | null;   // "avisame si baja de $X"
-  alerta?: { tipo: "umbral" | "minimo"; texto: string } | null;
+  alerta?: { tipo: "umbral" | "baja" | "minimo"; texto: string } | null;
   pack?: string | null;   // "conviene el pack grande"
 };
 
@@ -209,12 +209,12 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
     }
   });
 
-  // Alertas: bajó de tu tope, o el mejor producto está en su precio más bajo de los últimos 30 días
+  // Alertas: bajó de tu tope, bajó 5%+ desde el precio anterior, o está en su precio más bajo de los últimos 30 días
   const idsRec = [...new Set(entradas.filter((e) => e.rubro === "super" && e.recomendado?.productoId).map((e) => e.recomendado!.productoId!))];
   const { data: hist } = idsRec.length
-    ? await supabase.rpc("historial_30d", { p_productos: idsRec })
+    ? await supabase.rpc("variacion_precios", { p_productos: idsRec })
     : { data: [] };
-  const histDe = new Map(((hist as { producto_id: string; actual: number; minimo: number; maximo: number; fechas: number }[] | null) ?? []).map((h) => [h.producto_id, h]));
+  const histDe = new Map(((hist as { producto_id: string; actual: number; anterior: number | null; minimo: number; maximo: number; fechas: number }[] | null) ?? []).map((h) => [h.producto_id, h]));
   for (const e of entradas) {
     const r = e.recomendado;
     if (!r || r.precio == null || e.rubro !== "super") continue;
@@ -223,6 +223,11 @@ export async function armarLista(supabase: SupabaseClient, opts: { incluirCompra
       continue;
     }
     const h = r.productoId ? histDe.get(r.productoId) : undefined;
+    if (h?.anterior && Number(h.actual) <= Number(h.anterior) * 0.95) {
+      const baja = Math.round((1 - Number(h.actual) / Number(h.anterior)) * 100);
+      e.alerta = { tipo: "baja", texto: `Bajó ${baja}%: de ${pesosTxt(Number(h.anterior))} a ${pesosTxt(Number(h.actual))}` };
+      continue;
+    }
     // Necesita historia (2+ días de precios) y que haya variado al menos 8%
     if (h && h.fechas >= 2 && Number(h.maximo) >= Number(h.minimo) * 1.08 && r.precio <= Number(h.minimo) * 1.01) {
       const baja = Math.round((1 - r.precio / Number(h.maximo)) * 100);

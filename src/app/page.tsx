@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { ActivarAvisos } from "@/components/ActivarAvisos";
 import { armarLista } from "@/lib/lista";
 import { pesos } from "@/lib/formato";
 import { ListaInteractiva } from "@/components/ListaInteractiva";
@@ -58,7 +59,7 @@ export default async function Home() {
               {alertas.map((e) => (
                 <li key={e.key}>
                   <Link href={`/item/${e.origen}/${e.itemId}`} className="block px-4 py-3 active:opacity-80">
-                    <span className="block font-medium">{e.alerta!.tipo === "umbral" ? "🔔 " : "📉 "}{e.titulo}</span>
+                    <span className="block font-medium">{e.alerta!.tipo === "umbral" ? "🔔 " : e.alerta!.tipo === "baja" ? "⬇️ " : "📉 "}{e.titulo}</span>
                     <span className="block text-sm text-suave">{e.alerta!.texto}</span>
                   </Link>
                 </li>
@@ -66,6 +67,8 @@ export default async function Home() {
             </ul>
           </section>
         )}
+
+        {entradas.length > 0 && <ActivarAvisos />}
 
         {(volumen.stock.length > 0 || volumen.packs.length > 0) && (
           <section className="mt-4 rounded-2xl bg-menta p-4">
