@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { esRubro, detectarRubro, type Rubro } from "@/lib/rubros";
 import { CATEGORIAS, rubroDeCategoria, categoriaDe } from "@/lib/categorias";
-import { marcarEnSetto, actualizarEnSetto, agregarEnSetto, claveAlias, leerPendientesSetto } from "@/lib/setto";
+import { marcarEnSetto, actualizarEnSetto, agregarEnSetto, detalleEnSetto, claveAlias, leerPendientesSetto } from "@/lib/setto";
 import { unirTermino } from "@/lib/formato";
 
 const num = (v: FormDataEntryValue | null) => (v === null || v === "" ? null : Number(v));
@@ -153,10 +153,15 @@ export async function agregarALista(form: FormData) {
   const productoId = txt(form.get("producto_id"));
   const nombre = txt(form.get("nombre"));
   // Por defecto va a tu lista (casa). Solo si elegís "Setto" va a la caja de Setto (sin duplicar)
-  if (!productoId && nombre && form.get("destino") === "setto") {
+  if (form.get("destino") === "setto" && (nombre || productoId)) {
     const cant = num(form.get("cantidad"));
-    const id = await agregarEnSetto(supabase, nombre, cant && cant > 1 ? String(cant) : null).catch(() => null);
-    if (id) { revalidatePath("/"); return; }
+    const { data: prod } = productoId ? await supabase.from("productos").select("nombre").eq("id", productoId).maybeSingle() : { data: null };
+    const item = nombre ?? prod?.nombre ?? null;
+    const id = item ? await agregarEnSetto(supabase, item, cant && cant > 1 ? String(cant) : null).catch(() => null) : null;
+    if (id) {
+      if (productoId) await supabase.from("alias_productos").upsert({ texto: claveAlias(item!), producto_id: productoId, nombre: item }, { onConflict: "user_id,texto" });
+      revalidatePath("/"); return;
+    }
   }
   const listaId = await idListaPorDefecto(supabase);
   const fila = {
@@ -250,6 +255,10 @@ export async function guardarSetto(form: FormData) {
   };
   const { error } = await supabase.from("alias_productos").upsert(fila, { onConflict: "user_id,texto" });
   if (error) throw new Error(error.message);
+  if (fila.lugar_id && fila.lugar_id !== actual?.lugar_id) {
+    const { data: l } = await supabase.from("supermercados").select("nombre").eq("id", fila.lugar_id).maybeSingle();
+    await detalleEnSetto(supabase, String(form.get("id")), l?.nombre ?? null, null);
+  }
   revalidatePath("/");
   if (form.get("volver")) redirect("/");
   revalidatePath(`/item/setto/${String(form.get("id"))}`);
@@ -314,6 +323,8 @@ export async function guardarPrecioNuevo(form: FormData) {
         { onConflict: "user_id,texto" },
       );
     }
+    const { data: l } = await supabase.from("supermercados").select("nombre").eq("id", superId).maybeSingle();
+    await detalleEnSetto(supabase, itemId, l?.nombre ?? null, num(form.get("precio_promo")) ?? num(form.get("precio")));
   }
   revalidatePath("/precios");
   revalidatePath("/");
@@ -706,4 +717,38 @@ export async function pasarACasa(items: ParaCasa[]) {
   revalidatePath("/");
   revalidatePath("/super");
   return { n: items.length, settoError };
+}
+
+/** Pasa un ítem de tu lista a la caja de Setto, con su lugar, producto y precio. El ítem sale de tu lista. */
+export async function pasarASetto(form: FormData) {
+  const supabase = await createClient();
+  const id = String(form.get("id"));
+  const { data: i } = await supabase.from("lista_items")
+    .select("id, nombre, termino, cantidad, lugar_id, rubro, categoria, precio_alerta, producto_id, productos(nombre), supermercados(nombre)")
+    .eq("id", id).maybeSingle();
+  if (!i) throw new Error("No encontré el ítem");
+  const prod = i.productos as unknown as { nombre: string } | null;
+  const lugar = (i.supermercados as unknown as { nombre: string } | null)?.nombre ?? null;
+  const item = i.nombre ?? prod?.nombre;
+  if (!item) throw new Error("El ítem no tiene nombre");
+  const cant = Number(i.cantidad);
+  const settoId = await agregarEnSetto(supabase, item, cant > 1 ? String(cant) : null);
+  if (!settoId) throw new Error("No hay conexión con Setto");
+  const { error } = await supabase.from("alias_productos").upsert({
+    texto: claveAlias(item), nombre: i.nombre, termino: i.termino, producto_id: i.producto_id,
+    lugar_id: i.lugar_id, rubro: i.rubro, categoria: i.categoria, precio_alerta: i.precio_alerta,
+  }, { onConflict: "user_id,texto" });
+  if (error) throw new Error(error.message);
+  // Último precio conocido en ese lugar (si ya lo cargaste)
+  let precio: number | null = null;
+  if (i.producto_id && i.lugar_id) {
+    const { data: pr } = await supabase.from("precios").select("precio, precio_promo")
+      .eq("producto_id", i.producto_id).eq("supermercado_id", i.lugar_id).order("fecha", { ascending: false }).limit(1).maybeSingle();
+    if (pr) precio = Number(pr.precio_promo ?? pr.precio);
+  }
+  await detalleEnSetto(supabase, settoId, lugar, precio);
+  await supabase.from("lista_items").delete().eq("id", id);
+  revalidatePath("/");
+  revalidatePath("/super");
+  redirect(`/item/setto/${settoId}`);
 }

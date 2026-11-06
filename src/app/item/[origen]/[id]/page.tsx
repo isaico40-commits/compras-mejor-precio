@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { pendientesConAlias, limpiarItem } from "@/lib/setto";
 import { pesos, porUnidad, presentacion, palabraDim, esPorMetro, esRolloCocina, partirTermino } from "@/lib/formato";
 import { leerDescuentos, mejorDescuento, ahorroCon, textoDescuento, hoyAR } from "@/lib/descuentos";
-import { guardarItem, borrarItem, guardarSetto, guardarHabitual, guardarPagado, guardarCategoria, guardarRendimiento } from "@/app/actions";
+import { guardarItem, borrarItem, pasarASetto, guardarSetto, guardarHabitual, guardarPagado, guardarCategoria, guardarRendimiento } from "@/app/actions";
 import { CATEGORIAS, categoriaDe } from "@/lib/categorias";
 import { detectarRubro, esRubro, nombreRubro, type Rubro } from "@/lib/rubros";
 import { claveCompra } from "@/lib/lista";
@@ -351,7 +351,11 @@ export default async function ItemPage({ params }: { params: Promise<{ origen: s
               <NuevoLugar />
               <button className={`${btnCls} w-full`}>Guardar</button>
             </form>
-            <form action={borrarItem} className="mt-3">
+            <form action={pasarASetto} className="mt-3">
+              <input type="hidden" name="id" value={id} />
+              <button className={`${btnSecCls} w-full`}>Es de Setto: pasarlo a la lista de Setto</button>
+            </form>
+            <form action={borrarItem} className="mt-1">
               <input type="hidden" name="id" value={id} />
               <button className="w-full py-2 text-sm font-semibold text-red-600">Quitar de la lista</button>
             </form>

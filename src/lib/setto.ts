@@ -115,3 +115,13 @@ export const marcarEnSetto = (supabase: SupabaseClient, ids: string[]) => actual
 export async function agregarEnSetto(supabase: SupabaseClient, item: string, cantidad: string | null = null) {
   return rpcSetto<string>(supabase, "agregar_compra", { p_item: item, p_cantidad: cantidad });
 }
+
+/** Lugar de compra y precio de un pendiente en la caja de Setto (función detalle_compra). Si Setto todavía no la tiene, no hace nada. */
+export async function detalleEnSetto(supabase: SupabaseClient, id: string, donde: string | null, precio: number | null) {
+  if (!donde && precio == null) return false;
+  try {
+    return Boolean(await rpcSetto<boolean>(supabase, "detalle_compra", { p_id: id, p_donde: donde, p_precio: precio }));
+  } catch {
+    return false;
+  }
+}
