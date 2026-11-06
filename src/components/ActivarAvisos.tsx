@@ -24,9 +24,16 @@ export function ActivarAvisos() {
       if (Notification.permission === "denied") return setEstado("bloqueado");
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
+      if (sub) await guardar(sub).catch(() => {}); // por si se borró del servidor
       setEstado(sub ? "activo" : "apagado");
     })().catch(() => setEstado("sin-soporte"));
   }, []);
+
+  async function guardar(sub: PushSubscription) {
+    const j = sub.toJSON();
+    const { error } = await createClient().from("push_suscripciones").upsert({ endpoint: sub.endpoint, p256dh: j.keys?.p256dh, auth: j.keys?.auth }, { onConflict: "endpoint" });
+    if (error) throw new Error(error.message);
+  }
 
   async function activar() {
     setOcupado(true); setMsg(null);
@@ -38,9 +45,7 @@ export function ActivarAvisos() {
       if (e1 || !clave) throw new Error("no pude leer la clave");
       const reg = await navigator.serviceWorker.ready;
       const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(String(clave)) }));
-      const j = sub.toJSON();
-      const { error } = await supabase.from("push_suscripciones").upsert({ endpoint: sub.endpoint, p256dh: j.keys?.p256dh, auth: j.keys?.auth }, { onConflict: "endpoint" });
-      if (error) throw new Error(error.message);
+      await guardar(sub);
       setEstado("activo");
       await probar();
     } catch (e) {
@@ -50,10 +55,19 @@ export function ActivarAvisos() {
 
   async function probar() {
     setOcupado(true); setMsg(null);
-    const { data, error } = await createClient().functions.invoke("avisar-precios", { body: { prueba: true } });
-    setOcupado(false);
-    if (error) setMsg("No pude mandar la de prueba.");
-    else setMsg((data as { enviadas?: number })?.enviadas ? "Te mandé una de prueba. Si no la ves, revisá que el celu no tenga las notificaciones silenciadas." : "No encontré este celu registrado. Tocá Activar de nuevo.");
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (!sub) { setEstado("apagado"); setMsg("Este celu no tiene los avisos activados. Tocá Activar."); return; }
+      await guardar(sub);
+      const { data, error } = await createClient().functions.invoke("avisar-precios", { body: { prueba: true } });
+      if (error) { setMsg(`No pude mandar la de prueba (${error.message}).`); return; }
+      const r = data as { enviadas?: number; errores?: string[] };
+      setMsg(r.enviadas
+        ? "Te mandé una de prueba. Si no la ves, revisá que el celu no tenga las notificaciones silenciadas."
+        : `No llegó: ${r.errores?.[0] ?? "no encontré este celu registrado"}. Tocá Activar de nuevo.`);
+      if (!r.enviadas) { await sub.unsubscribe().catch(() => {}); setEstado("apagado"); }
+    } finally { setOcupado(false); }
   }
 
   if (estado === "cargando" || estado === "sin-soporte") return null;
