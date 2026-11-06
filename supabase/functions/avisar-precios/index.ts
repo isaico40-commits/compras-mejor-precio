@@ -11,6 +11,14 @@ const APP = "https://compras-mejor-precio.vercel.app";
 type Sub = { id: string; user_id: string; endpoint: string; p256dh: string; auth: string };
 type Alerta = { user_id: string; clave: string; tipo: string; titulo: string; texto: string; precio: number; url: string };
 
+// La app llama a la función desde el navegador: hace falta CORS (si no, el celu solo manda el OPTIONS y la prueba falla)
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+const json = (b: unknown, status = 200) => Response.json(b, { status, headers: CORS });
+
 const miles = (s: string) => s.replace(/(\d),(?=\d{3}\b)/g, "$1.");
 
 async function claves() {
@@ -29,32 +37,37 @@ async function claves() {
 
 async function enviar(subs: Sub[], payload: Record<string, unknown>) {
   let ok = 0;
+  const errores: string[] = [];
   for (const s of subs) {
     try {
       await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), { TTL: 12 * 3600 });
       ok++;
     } catch (e) {
-      const code = (e as { statusCode?: number }).statusCode;
-      if (code === 404 || code === 410) await db.from("push_suscripciones").delete().eq("id", s.id); // el celu la dio de baja
-      else console.error("push", code, (e as Error).message);
+      const err = e as { statusCode?: number; body?: string; message?: string };
+      const detalle = `${new URL(s.endpoint).host} ${err.statusCode ?? "-"} ${err.message ?? ""} ${err.body ?? ""}`.trim();
+      console.error("push", detalle);
+      errores.push(detalle);
+      if (err.statusCode === 410) await db.from("push_suscripciones").delete().eq("id", s.id); // el celu la dio de baja
     }
   }
-  return ok;
+  return { ok, errores };
 }
 
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  if (req.method !== "POST") return json({ error: "solo POST" }, 405);
   const body = await req.json().catch(() => ({}));
   const k = await claves();
-  if (body.clave) return Response.json({ publica: k.publica });
+  if (body.clave) return json({ publica: k.publica });
 
   // Prueba: al usuario que la pide (con su sesión)
   if (body.prueba) {
     const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
     const { data: u } = await db.auth.getUser(jwt);
-    if (!u?.user) return Response.json({ error: "sin sesión" }, { status: 401 });
+    if (!u?.user) return json({ error: "sin sesión" }, 401);
     const { data: subs } = await db.from("push_suscripciones").select("*").eq("user_id", u.user.id);
-    const n = await enviar((subs as Sub[]) ?? [], { title: "Listo 🛒", body: "Así te van a llegar las alertas cuando algo baje de precio.", url: "/" });
-    return Response.json({ enviadas: n });
+    const r = await enviar((subs as Sub[]) ?? [], { title: "Listo 🛒", body: "Así te van a llegar las alertas cuando algo baje de precio.", url: "/" });
+    return json({ enviadas: r.ok, suscripciones: subs?.length ?? 0, errores: r.errores });
   }
 
   // Envío diario
@@ -62,7 +75,7 @@ Deno.serve(async (req) => {
     db.rpc("alertas_push"),
     db.from("push_suscripciones").select("*"),
   ]);
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) return json({ error: error.message }, 500);
   const porUsuario = new Map<string, Alerta[]>();
   for (const a of (alertas as Alerta[]) ?? []) porUsuario.set(a.user_id, [...(porUsuario.get(a.user_id) ?? []), a]);
 
@@ -77,11 +90,11 @@ Deno.serve(async (req) => {
           body: lista.slice(0, 4).map((a) => `${a.titulo.replace(/^\S+\s/, "")}: ${miles(a.texto)}`).join("\n") + (lista.length > 4 ? `\ny ${lista.length - 4} más` : ""),
           url: "/", tag: "alertas",
         };
-    const n = await enviar(susc, payload);
+    const n = (await enviar(susc, payload)).ok;
     if (n > 0) {
       enviadas += n;
       await db.from("push_enviados").upsert(lista.map((a) => ({ user_id: uid, clave: a.clave, precio: a.precio, enviado_at: new Date().toISOString() })));
     }
   }
-  return Response.json({ alertas: (alertas as Alerta[] | null)?.length ?? 0, enviadas, app: APP });
+  return json({ alertas: (alertas as Alerta[] | null)?.length ?? 0, enviadas, app: APP });
 });
