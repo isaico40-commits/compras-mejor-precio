@@ -106,6 +106,10 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
         <Link href="/super" className="pb-1 text-sm font-semibold text-marca">Cambiar</Link>
       </Encabezado>
       <div className="space-y-6 px-4 pb-20">
+        <Link href={`/escanear?s=${superId}`} className="block rounded-2xl bg-tinta px-4 py-3 text-white active:opacity-80">
+          <span className="block text-[15px] font-bold">📷 Escanear mientras comprás</span>
+          <span className="block text-sm opacity-80">Carrito virtual: cuánto llevás y si estás pagando de más</span>
+        </Link>
         {promoHoy ? (
           <p className="rounded-2xl bg-limon px-4 py-3 text-sm text-limon-tinta">
             <b>Hoy: {textoDescuento(promoHoy)}</b>{promoHoy.detalle && <span className="block text-sm">{promoHoy.detalle}</span>}
