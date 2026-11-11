@@ -2,7 +2,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { armarLista, type Entrada } from "@/lib/lista";
 import { pesos, porUnidad, presentacion, normalizar } from "@/lib/formato";
-import { Changuito, type FilaSuper } from "@/components/Changuito";
+import { Suspense } from "react";
+import { ModoSuper, type FilaLista } from "@/components/ModoSuper";
 import { leerDescuentos, mejorDescuento, hoyAR, textoDescuento, DIAS } from "@/lib/descuentos";
 import { Encabezado, Pill } from "@/components/ui";
 
@@ -50,23 +51,10 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
   const nombreSuper = supers?.find((s) => s.id === superId)?.nombre ?? "";
   const promoHoy = mejorDescuento(descuentos, superId, dia);
   const otrosDias = descuentos.filter((d) => d.supermercado_id === superId && !d.dias.includes(dia));
-  const [{ entradas: todas }, { data: opsRaw }, { data: historial }] = await Promise.all([
-    armarLista(supabase),
-    supabase.rpc("oportunidades_en_super", { p_super: superId }),
-    supabase.from("sugerencias").select("termino").limit(300),
-  ]);
+  const { entradas: todas } = await armarLista(supabase);
 
   // Verdulería / bazar / otros: solo aparecen si los anotaste para este lugar
   const entradas = todas.filter((e) => e.rubro === "super" || e.lugar?.id === superId);
-
-  // Oportunidades: lo que acá está más barato que en todos los demás súpers.
-  // Primero lo que solés comprar (tu lista + lo que buscaste antes), después el resto.
-  const oportunidades = ((opsRaw as Oportunidad[] | null) ?? []);
-  const terminos = [...new Set([...entradas.map((e) => e.termino), ...(historial ?? []).map((h) => h.termino as string)])]
-    .map(patron).filter((p): p is RegExp[] => !!p);
-  const esTuyo = (o: Oportunidad) => { const b = normalizar(o.base ?? o.nombre); return terminos.some((ps) => ps.every((r) => r.test(b))); };
-  const opsTuyas = oportunidades.filter(esTuyo).slice(0, 15);
-  const opsOtras = oportunidades.filter((o) => !opsTuyas.includes(o)).slice(0, 20);
 
   // Precio acá: producto fijado -> ese producto; si no -> la opción más barata por kg/l/u de este súper
   const fijados = entradas.filter((e) => e.producto);
@@ -97,7 +85,6 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
     return { e, precio, nombre, pu, dim, cant, conviene, pid };
   });
   const aca = filas.filter((f) => f.conviene);
-  const otro = filas.filter((f) => !f.conviene);
   const total = aca.reduce((t, f) => t + (f.precio ?? 0) * f.e.cantidad, 0);
 
   return (
@@ -105,80 +92,95 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
       <Encabezado titulo={nombreSuper} sub={<>Comprá acá {aca.length} cosas · <span className="num">{pesos(total)}</span></>}>
         <Link href="/super" className="pb-1 text-sm font-semibold text-marca">Cambiar</Link>
       </Encabezado>
-      <div className="space-y-6 px-4 pb-20">
-        <Link href={`/escanear?s=${superId}`} className="block rounded-2xl bg-tinta px-4 py-3 text-white active:opacity-80">
-          <span className="block text-[15px] font-bold">📷 Escanear mientras comprás</span>
-          <span className="block text-sm opacity-80">Carrito virtual: cuánto llevás y si estás pagando de más</span>
-        </Link>
+      <div className="space-y-4 pb-44 pt-1">
         {promoHoy ? (
-          <p className="rounded-2xl bg-limon px-4 py-3 text-sm text-limon-tinta">
+          <p className="mx-4 rounded-2xl bg-limon px-4 py-3 text-sm text-limon-tinta">
             <b>Hoy: {textoDescuento(promoHoy)}</b>{promoHoy.detalle && <span className="block text-sm">{promoHoy.detalle}</span>}
           </p>
         ) : otrosDias.length > 0 && (
-          <p className="rounded-2xl bg-durazno px-4 py-3 text-sm text-durazno-tinta">
+          <p className="mx-4 rounded-2xl bg-durazno px-4 py-3 text-sm text-durazno-tinta">
             Hoy no hay descuento acá. {otrosDias.map((d) => `${d.dias.map((x) => DIAS[x]).join(", ")}: ${textoDescuento(d)}`).join(" · ")}
           </p>
         )}
-        <Changuito superId={superId} promo={promoHoy ? { porcentaje: promoHoy.porcentaje, tope: promoHoy.tope, minimo: promoHoy.minimo, medio: promoHoy.medio } : null} bloques={[
-          { titulo: "Comprá acá", tono: "verde", filas: aca.map((f) => aFila(f, false)) },
-          { titulo: "Mejor en otro lado", tono: "naranja", filas: otro.map((f) => aFila(f, true)) },
-        ]} />
-        {!entradas.length && <p className="pt-10 text-center text-suave">Tu lista está vacía.</p>}
-        {(opsTuyas.length > 0 || opsOtras.length > 0) && (
-          <section>
-            <h2 className="px-1 text-lg font-bold">Oportunidades acá</h2>
-            <p className="mb-2 px-1 text-sm text-suave">Más baratos en {nombreSuper} que en cualquier otro súper.</p>
-            {opsTuyas.length > 0 && (
-              <>
-                <p className="mb-1.5 mt-3 px-1 text-[15px] font-bold text-lila-tinta">De lo que solés comprar</p>
-                <ListaOps ops={opsTuyas} />
-              </>
-            )}
-            {opsOtras.length > 0 && (
-              <details className="mt-3" open={!opsTuyas.length}>
-                <summary className="cursor-pointer px-1 py-1 text-sm font-semibold text-marca">Otras ofertas ({opsOtras.length})</summary>
-                <div className="mt-1.5"><ListaOps ops={opsOtras} /></div>
-              </details>
-            )}
-          </section>
-        )}
+        <ModoSuper
+          superId={superId}
+          nombreSuper={nombreSuper}
+          promo={promoHoy ? { porcentaje: promoHoy.porcentaje, tope: promoHoy.tope, minimo: promoHoy.minimo, medio: promoHoy.medio } : null}
+          filas={filas.map(aFila)}
+        />
+        {!entradas.length && <p className="px-4 pt-2 text-center text-suave">Tu lista está vacía. Igual podés escanear lo que vas llevando.</p>}
+        <div className="px-4">
+          <Suspense fallback={<p className="px-1 text-sm text-suave">Buscando ofertas de {nombreSuper}…</p>}>
+            <Oportunidades superId={superId} nombreSuper={nombreSuper} terminos={entradas.map((e) => e.termino)} />
+          </Suspense>
+        </div>
       </div>
     </main>
   );
 
-  function ListaOps({ ops }: { ops: Oportunidad[] }) {
-    return (
-      <ul className="divide-y divide-linea overflow-hidden rounded-2xl border border-linea bg-tarjeta">
-        {ops.map((o) => (
-          <li key={o.producto_id} className="flex items-start gap-3 px-4 py-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-[15px] leading-snug">{o.nombre}</p>
-              <p className="text-sm text-suave">
-                {o.super_sig}: <span className="num">{pesos(o.siguiente)}</span>
-                {presentacion(o.cant, o.dim) && <> · {presentacion(o.cant, o.dim)}</>}
-                {o.promo && <span className="ml-1"><Pill tono="naranja">promo</Pill></span>}
-              </p>
-            </div>
-            <div className="shrink-0 text-right">
-              <p className="num font-semibold">{pesos(o.precio)}</p>
-              <Pill tono="verde">−{o.ahorro}%</Pill>
-            </div>
-          </li>
-        ))}
-      </ul>
-    );
-  }
-
-  function aFila({ e, precio, nombre, pu, dim, cant, pid }: Fila, otroLado: boolean): FilaSuper {
+  function aFila({ e, precio, nombre, pu, dim, cant, pid, conviene }: Fila): FilaLista {
     const pres = presentacion(cant, dim);
     const detalle = nombre ? [nombre !== e.titulo ? nombre : null, pres || null, porUnidad(pu, dim) || null].filter(Boolean).join(" · ") : null;
+    const r = e.recomendado;
+    // Cuánto pagás de más acá: por kg/l/u contra el mejor lugar
+    const deMas = !conviene && r?.porUnidad != null && pu != null && cant
+      ? Math.max(0, (pu - Number(r.porUnidad)) * Number(cant) * e.cantidad) : 0;
     return {
       key: e.key, origen: e.origen, itemId: e.itemId, titulo: e.titulo, termino: e.termino, productoId: pid,
-      precio: precio != null ? precio * e.cantidad : null, precioTxt: precio != null ? pesos(precio) : "—",
-      cantidad: e.cantidad, urgente: e.urgente, detalle: detalle || null, anotado: e.lugar?.id === superId,
-      otroLado: otroLado && e.recomendado
-        ? `${e.recomendado.super}: ${pesos(e.recomendado.precio)} · ${porUnidad(e.recomendado.porUnidad, e.recomendado.dim)}${precio == null ? " · acá no hay precio" : ""}`
+      precio, cantidad: e.cantidad, urgente: e.urgente, detalle: detalle || null, anotado: e.lugar?.id === superId, conviene,
+      otroLado: !conviene && r
+        ? `${r.super}: ${pesos(r.precio)}${r.porUnidad != null ? ` · ${porUnidad(r.porUnidad, r.dim)}` : ""}${precio == null ? " · acá no hay precio" : ""}`
         : null,
+      deMas: Math.round(deMas),
     };
   }
+}
+
+/** Ofertas del súper: se cargan después, para que la lista aparezca enseguida. */
+async function Oportunidades({ superId, nombreSuper, terminos: terms }: { superId: string; nombreSuper: string; terminos: string[] }) {
+  const supabase = await createClient();
+  const [{ data: opsRaw }, { data: historial }] = await Promise.all([
+    supabase.rpc("oportunidades_en_super", { p_super: superId }),
+    supabase.from("sugerencias").select("termino").limit(300),
+  ]);
+  const oportunidades = ((opsRaw as Oportunidad[] | null) ?? []);
+  const terminos = [...new Set([...terms, ...(historial ?? []).map((h) => h.termino as string)])]
+    .map(patron).filter((p): p is RegExp[] => !!p);
+  const esTuyo = (o: Oportunidad) => { const b = normalizar(o.base ?? o.nombre); return terminos.some((ps) => ps.every((r) => r.test(b))); };
+  const opsTuyas = oportunidades.filter(esTuyo).slice(0, 15);
+  const opsOtras = oportunidades.filter((o) => !opsTuyas.includes(o)).slice(0, 20);
+  if (!opsTuyas.length && !opsOtras.length) return null;
+  return (
+    <details className="rounded-2xl border border-linea bg-tarjeta">
+      <summary className="cursor-pointer px-4 py-3 text-[16px] font-bold">💡 Ofertas en {nombreSuper} ({opsTuyas.length + opsOtras.length})</summary>
+      <div className="space-y-3 px-3 pb-3">
+        <p className="px-1 text-sm text-suave">Más baratos acá que en cualquier otro súper.</p>
+        {opsTuyas.length > 0 && (<><p className="px-1 text-[15px] font-bold text-lila-tinta">De lo que solés comprar</p><ListaOps ops={opsTuyas} /></>)}
+        {opsOtras.length > 0 && (<><p className="px-1 text-[15px] font-bold text-suave">Otras</p><ListaOps ops={opsOtras} /></>)}
+      </div>
+    </details>
+  );
+}
+
+function ListaOps({ ops }: { ops: Oportunidad[] }) {
+  return (
+    <ul className="divide-y divide-linea overflow-hidden rounded-2xl border border-linea bg-tarjeta">
+      {ops.map((o) => (
+        <li key={o.producto_id} className="flex items-start gap-3 px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px] leading-snug">{o.nombre}</p>
+            <p className="text-sm text-suave">
+              {o.super_sig}: <span className="num">{pesos(o.siguiente)}</span>
+              {presentacion(o.cant, o.dim) && <> · {presentacion(o.cant, o.dim)}</>}
+              {o.promo && <span className="ml-1"><Pill tono="naranja">promo</Pill></span>}
+            </p>
+          </div>
+          <div className="shrink-0 text-right">
+            <p className="num font-semibold">{pesos(o.precio)}</p>
+            <Pill tono="verde">−{o.ahorro}%</Pill>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
 }
