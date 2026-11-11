@@ -3,6 +3,10 @@ name: Importar Precios Claros
 on:
   schedule:
     - cron: "23 13 * * *"   # todos los días 10:23 de Argentina
+    # Respaldos: GitHub a veces saltea corridas programadas (pasó del 7 al 11/11).
+    # Correr de nuevo el mismo día no duplica nada: sepa_cargar solo agrega precios distintos.
+    - cron: "47 17 * * *"   # 14:47
+    - cron: "17 22 * * *"   # 19:17
   workflow_dispatch:
     inputs:
       fecha:
