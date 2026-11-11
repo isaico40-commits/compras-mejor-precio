@@ -752,3 +752,63 @@ export async function pasarASetto(form: FormData) {
   revalidatePath("/super");
   redirect(`/item/setto/${settoId}`);
 }
+
+// ---------- Escáner (carrito virtual en el súper) ----------
+
+export type Escaneo = {
+  producto: { id: string; nombre: string; dim: string | null; cant_base: number | null };
+  aca: { precio: number; lista: number; fecha: string; fuente: string; promo: string | null } | null;
+  otros: { super: string; super_id: string; precio: number; fecha: string }[];
+} | null;
+
+const soloDigitos = (ean: string) => ean.replace(/\D/g, "");
+
+/** Busca un código de barras: producto, su último precio en este súper y dónde sale menos. */
+export async function escanear(ean: string, superId: string): Promise<Escaneo> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("escaneo", { p_ean: soloDigitos(ean), p_super: superId });
+  if (error) throw new Error(error.message);
+  return data as Escaneo;
+}
+
+/** Precio que ves en la góndola: queda guardado como precio de este súper. */
+export async function precioGondola(productoId: string, superId: string, precio: number) {
+  if (!(precio > 0)) throw new Error("Precio inválido");
+  const supabase = await createClient();
+  const { error } = await supabase.from("precios").insert({ producto_id: productoId, supermercado_id: superId, precio, fuente: "manual", promo_detalle: "Góndola (escáner)" });
+  if (error) throw new Error(error.message);
+}
+
+/** Código que no está en la base: se crea el producto con ese EAN y su precio acá. */
+export async function productoNuevoEan(ean: string, nombre: string, superId: string, precio: number | null) {
+  const supabase = await createClient();
+  const codigo = soloDigitos(ean);
+  if (codigo.length < 7) throw new Error("Código inválido");
+  const n = nombre.trim().replace(/\s+/g, " ");
+  if (!n) throw new Error("Falta el nombre");
+  const { data: prod, error } = await supabase.from("productos").insert({ nombre: n, ean: codigo }).select("id").single();
+  if (error) throw new Error(error.message);
+  if (precio && precio > 0) await precioGondola(prod.id, superId, precio);
+  return escanear(codigo, superId);
+}
+
+export type ItemEscaneado = { productoId: string; nombre: string; precio: number; cantidad: number };
+
+/** Fin de la compra con el escáner: va al historial (gastos) y tacha de tu lista lo que compraste. */
+export async function terminarEscaneo(superId: string, items: ItemEscaneado[]) {
+  if (!items.length) return { ok: true, tachados: 0 };
+  const supabase = await createClient();
+  const hoy = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+  const clave = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+  const filas = items.flatMap((i) => Array.from({ length: Math.max(1, Math.round(i.cantidad)) }, () => ({
+    clave: clave(i.nombre), nombre: i.nombre, producto_id: i.productoId, supermercado_id: superId, precio: i.precio, fecha: hoy, origen: "escaner",
+  })));
+  const { error } = await supabase.from("compras_historial").insert(filas);
+  if (error) throw new Error(error.message);
+  const { data: tachados } = await supabase.from("lista_items").update({ ultima_compra: hoy })
+    .in("producto_id", items.map((i) => i.productoId)).select("id");
+  revalidatePath("/");
+  revalidatePath("/super");
+  revalidatePath("/gastos");
+  return { ok: true, tachados: tachados?.length ?? 0 };
+}
