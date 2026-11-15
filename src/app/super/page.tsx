@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { armarLista, type Entrada } from "@/lib/lista";
 import { pesos, porUnidad, presentacion, normalizar } from "@/lib/formato";
 import { Suspense } from "react";
+import { categoriaDe } from "@/lib/categorias";
 import { ModoSuper, type FilaLista } from "@/components/ModoSuper";
 import { leerDescuentos, mejorDescuento, hoyAR, textoDescuento, DIAS } from "@/lib/descuentos";
 import { Encabezado, Pill } from "@/components/ui";
@@ -84,22 +85,16 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
     const conviene = e.lugar?.id === superId || (pu != null && (mejor == null || pu <= Number(mejor) * 1.03)) || (precio != null && e.recomendado?.superId === superId);
     return { e, precio, nombre, pu, dim, cant, conviene, pid };
   });
-  const aca = filas.filter((f) => f.conviene);
-  const total = aca.reduce((t, f) => t + (f.precio ?? 0) * f.e.cantidad, 0);
 
   return (
     <main>
-      <Encabezado titulo={nombreSuper} sub={<>Comprá acá {aca.length} cosas · <span className="num">{pesos(total)}</span></>}>
+      <Encabezado titulo={nombreSuper} sub={promoHoy?.detalle ?? undefined}>
         <Link href="/super" className="pb-1 text-sm font-semibold text-marca">Cambiar</Link>
       </Encabezado>
       <div className="space-y-4 pb-44 pt-1">
-        {promoHoy ? (
-          <p className="mx-4 rounded-2xl bg-limon px-4 py-3 text-sm text-limon-tinta">
-            <b>Hoy: {textoDescuento(promoHoy)}</b>{promoHoy.detalle && <span className="block text-sm">{promoHoy.detalle}</span>}
-          </p>
-        ) : otrosDias.length > 0 && (
-          <p className="mx-4 rounded-2xl bg-durazno px-4 py-3 text-sm text-durazno-tinta">
-            Hoy no hay descuento acá. {otrosDias.map((d) => `${d.dias.map((x) => DIAS[x]).join(", ")}: ${textoDescuento(d)}`).join(" · ")}
+        {!promoHoy && otrosDias.length > 0 && (
+          <p className="mx-4 rounded-2xl bg-limon px-4 py-2.5 text-sm text-limon-tinta">
+            💡 Descuento acá: {otrosDias.map((d) => `${d.dias.map((x) => DIAS[x]).join(", ")} ${textoDescuento(d)}`).join(" · ")}
           </p>
         )}
         <ModoSuper
@@ -132,6 +127,7 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
         ? `${r.super}: ${pesos(r.precio)}${r.porUnidad != null ? ` · ${porUnidad(r.porUnidad, r.dim)}` : ""}${precio == null ? " · acá no hay precio" : ""}`
         : null,
       deMas: Math.round(deMas),
+      cat: categoriaDe(e.titulo, e.rubro, e.categoria).id,
     };
   }
 }
