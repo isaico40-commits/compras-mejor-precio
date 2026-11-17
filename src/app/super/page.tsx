@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ElegirSuper } from "@/components/ElegirSuper";
 import { createClient } from "@/lib/supabase/server";
 import { armarLista, type Entrada } from "@/lib/lista";
 import { pesos, porUnidad, presentacion, normalizar } from "@/lib/formato";
@@ -35,16 +36,10 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
     return (
       <main>
         <Encabezado titulo="¿Dónde estás?" sub="Te muestro qué conviene comprar acá" />
-        <ul className="grid grid-cols-2 gap-2 px-4">
-          {supers?.map((s) => (
-            <li key={s.id}>
-              <Link href={`/super?s=${s.id}`} className="block rounded-2xl bg-cielo px-4 py-4 font-semibold text-cielo-tinta active:opacity-80">
-                {s.nombre}
-                {(() => { const d = mejorDescuento(descuentos, s.id, dia); return d ? <span className="mt-1 block text-sm font-semibold text-marca">Hoy −{d.porcentaje}% {d.medio}</span> : null; })()}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <ElegirSuper supers={(supers ?? []).map((s) => {
+          const d = mejorDescuento(descuentos, s.id, dia);
+          return { id: s.id, nombre: s.nombre, promo: d ? `−${d.porcentaje}% ${d.medio}` : null };
+        })} />
       </main>
     );
   }
