@@ -386,9 +386,12 @@ export async function guardarPrecioNuevo(form: FormData) {
 
   // Si se cargó desde un ítem de la lista: queda fijado a este producto y a este lugar
   await fijarEnItem(supabase, form, productoId!, superId, num(form.get("precio_promo")) ?? num(form.get("precio")));
+  // Insumo de Setto: queda en la pestaña Setto con este lugar
+  const esSetto = !!form.get("setto");
+  if (esSetto) await supabase.from("setto_insumos").upsert({ producto_id: productoId!, lugar_id: superId }, { onConflict: "user_id,producto_id" });
   revalidatePath("/precios");
   revalidatePath("/");
-  redirect("/precios?ok=1");
+  redirect(esSetto ? "/precios?ver=setto&ok=1" : "/precios?ok=1");
 }
 
 export async function editarPrecio(form: FormData) {
@@ -871,4 +874,14 @@ export async function terminarEscaneo(superId: string, items: ItemEscaneado[]) {
   revalidatePath("/super");
   revalidatePath("/gastos");
   return { ok: true, tachados: tachados?.length ?? 0 };
+}
+
+/** Marca un producto como insumo de Setto (o lo saca de la lista de insumos). */
+export async function insumoSetto(form: FormData) {
+  const supabase = await createClient();
+  const productoId = txt(form.get("producto_id"));
+  if (!productoId) return;
+  if (form.get("quitar")) await supabase.from("setto_insumos").delete().eq("producto_id", productoId);
+  else await supabase.from("setto_insumos").upsert({ producto_id: productoId }, { onConflict: "user_id,producto_id" });
+  revalidatePath("/precios");
 }

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { guardarPrecioNuevo, salir } from "@/app/actions";
-import { pesos, presentacion, filtroBusqueda } from "@/lib/formato";
+import { guardarPrecioNuevo, salir, insumoSetto } from "@/app/actions";
+import { pesos, presentacion, filtroBusqueda, porUnidad } from "@/lib/formato";
 import { Encabezado, inputCls, btnCls, btnSecCls } from "@/components/ui";
 import { Icono } from "@/components/IconoProducto";
 import { categoriaDe } from "@/lib/categorias";
@@ -12,7 +12,7 @@ type Prod = { id: string; nombre: string; marca: string | null; dim: string | nu
 
 export default async function PreciosPage({
   searchParams,
-}: { searchParams: Promise<{ q?: string; ok?: string; producto?: string; nuevo?: string; s?: string; item?: string; texto?: string; ver?: string }> }) {
+}: { searchParams: Promise<{ q?: string; ok?: string; producto?: string; nuevo?: string; s?: string; item?: string; texto?: string; ver?: string; setto?: string }> }) {
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const supabase = await createClient();
@@ -27,6 +27,9 @@ export default async function PreciosPage({
   if (sp.s) mios = mios.eq("supermercado_id", sp.s);
 
   const verCargados = sp.ver === "cargados";
+  const verSetto = sp.ver === "setto";
+  const paraSetto = verSetto || sp.setto === "1";
+  const extra = paraSetto ? "&setto=1" : "";
   const [{ data: supers }, { data: resultados }, { data: elegido }, { data: cargados }, lista] = await Promise.all([
     supabase.from("supermercados").select("id, nombre").eq("oculto", false).order("nombre"),
     q
@@ -36,11 +39,14 @@ export default async function PreciosPage({
       ? supabase.from("productos").select("id, nombre, marca, dim, cant_base").eq("id", sp.producto).maybeSingle()
       : Promise.resolve({ data: null as Prod | null }),
     verCargados ? mios : Promise.resolve({ data: [] }),
-    !verCargados ? armarLista(supabase).catch(() => null) : Promise.resolve(null),
+    !verCargados && !verSetto ? armarLista(supabase).catch(() => null) : Promise.resolve(null),
   ]);
-  const deItem = sp.item ? (
+  type Costo = { producto_id: string; nombre: string; precio: number | null; super: string | null; fecha: string | null; dim: string | null; cant_base: number | null; por_unidad: number | null; desde: string };
+  const costos = verSetto ? (((await supabase.rpc("costos_setto")).data as Costo[] | null) ?? []) : [];
+  const deItem = sp.item || paraSetto ? (
     <>
-      <input type="hidden" name="item" value={sp.item} />
+      {paraSetto && <input type="hidden" name="setto" value="1" />}
+      {sp.item && <input type="hidden" name="item" value={sp.item} />}
       {sp.texto && <input type="hidden" name="texto" value={sp.texto} />}
     </>
   ) : null;
@@ -62,8 +68,9 @@ export default async function PreciosPage({
         {/* Cargar un precio: buscar o crear */}
         {!formAbierto && (
           <section className="space-y-3 rounded-3xl bg-tarjeta p-4 shadow-sm ring-1 ring-linea">
-            <p className="text-[17px] font-bold">Cargar un precio</p>
+            <p className="text-[17px] font-bold">{paraSetto ? "☕ Agregar insumo de Setto" : "Cargar un precio"}</p>
             <form className="flex gap-2">
+              {paraSetto && <input type="hidden" name="setto" value="1" />}
               <input name="q" defaultValue={q} placeholder="🔍 Buscá el producto" className={inputCls} />
               <button className={btnSecCls}>Buscar</button>
             </form>
@@ -71,7 +78,7 @@ export default async function PreciosPage({
               <ul className="divide-y divide-linea overflow-hidden rounded-2xl ring-1 ring-linea">
                 {(resultados as Prod[] | null)?.map((p) => (
                   <li key={p.id}>
-                    <Link href={`/precios?producto=${p.id}`} className="flex items-center gap-3 px-3 py-2.5 active:bg-fondo">
+                    <Link href={`/precios?producto=${p.id}${extra}`} className="flex items-center gap-3 px-3 py-2.5 active:bg-fondo">
                       <Icono nombre={p.nombre} />
                       <span className="min-w-0 flex-1 text-[15px] font-medium leading-snug">{p.nombre}</span>
                       {presentacion(p.cant_base, p.dim) && <span className={`${chip} shrink-0 bg-fondo text-suave`}>{presentacion(p.cant_base, p.dim)}</span>}
@@ -81,7 +88,7 @@ export default async function PreciosPage({
                 {!resultados?.length && <li className="px-3 py-3 text-sm text-suave">No está en el catálogo. Crealo abajo.</li>}
               </ul>
             )}
-            <Link href={`/precios?nuevo=${encodeURIComponent(q)}`} className={`${btnCls} block text-center`}>
+            <Link href={`/precios?nuevo=${encodeURIComponent(q)}${extra}`} className={`${btnCls} block text-center`}>
               {q ? `+ Crear “${q}”` : "+ Producto nuevo"}
             </Link>
           </section>
@@ -111,20 +118,62 @@ export default async function PreciosPage({
               )}
               <CamposPrecio supers={supers ?? []} fecha={hoy} />
               {sp.item && <p className="text-[13px] text-suave">Queda fijo en tu lista con este precio y este lugar.</p>}
+              {paraSetto && <p className="text-[13px] text-suave">☕ Queda como insumo de Setto, con este lugar.</p>}
               <div className="flex gap-2 pt-1">
-                <Link href="/precios" className={`${btnSecCls} flex-1 text-center`}>Cancelar</Link>
+                <Link href={paraSetto ? "/precios?ver=setto" : "/precios"} className={`${btnSecCls} flex-1 text-center`}>Cancelar</Link>
                 <button className={`${btnCls} flex-[2]`}>Guardar precio</button>
               </div>
             </form>
           </section>
         )}
 
-        <div className="grid grid-cols-2 gap-1 rounded-2xl bg-linea/60 p-1 text-[14px] font-semibold">
-          <Link href="/precios" className={`rounded-xl py-2 text-center ${!verCargados ? "bg-tarjeta shadow-sm" : "text-suave"}`}>📋 Tu lista</Link>
-          <Link href="/precios?ver=cargados" className={`rounded-xl py-2 text-center ${verCargados ? "bg-tarjeta shadow-sm" : "text-suave"}`}>✍️ Cargados por vos</Link>
+        <div className="grid grid-cols-3 gap-1 rounded-2xl bg-linea/60 p-1 text-[13px] font-semibold">
+          <Link href="/precios" className={`rounded-xl py-2 text-center ${!verCargados && !verSetto ? "bg-tarjeta shadow-sm" : "text-suave"}`}>📋 Tu lista</Link>
+          <Link href="/precios?ver=setto" className={`rounded-xl py-2 text-center ${verSetto ? "bg-tarjeta shadow-sm" : "text-suave"}`}>☕ Setto</Link>
+          <Link href="/precios?ver=cargados" className={`rounded-xl py-2 text-center ${verCargados ? "bg-tarjeta shadow-sm" : "text-suave"}`}>✍️ Cargados</Link>
         </div>
 
-        {!verCargados && (
+        {verSetto && (
+          <section>
+            <p className="mb-2 px-1 text-[13px] text-suave">Lo que compra Setto, con su costo actual por kilo, litro o unidad. Tocá uno para cargar un precio nuevo.</p>
+            <ul className={filas}>
+              {costos.map((c) => (
+                <li key={c.producto_id} className="flex items-center">
+                  <Link href={`/precios?producto=${c.producto_id}&setto=1`} className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 active:bg-fondo">
+                    <Icono nombre={c.nombre} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] font-semibold">{c.nombre}</span>
+                      <span className="mt-0.5 flex flex-wrap gap-1">
+                        {c.super && <span className={`${chip} bg-cielo text-cielo-tinta`}>{c.super}</span>}
+                        {c.fecha && <span className={`${chip} bg-fondo text-suave`}>{fecha(c.fecha)}</span>}
+                        {presentacion(c.cant_base, c.dim) && <span className={`${chip} bg-fondo text-suave`}>{presentacion(c.cant_base, c.dim)}</span>}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      {c.precio != null
+                        ? <><span className="num block text-[16px] font-bold">{pesos(Number(c.precio))}</span>
+                            {c.por_unidad != null && c.dim !== "u" && <span className="num block text-[12px] font-semibold text-marca">{porUnidad(Number(c.por_unidad), c.dim)}</span>}
+                            {c.por_unidad != null && c.dim === "u" && Number(c.cant_base) > 1 && <span className="num block text-[12px] font-semibold text-marca">{pesos(Number(c.por_unidad))} c/u</span>}</>
+                        : <span className={`${chip} bg-marca text-white`}>+ Precio</span>}
+                    </span>
+                  </Link>
+                  {c.desde === "insumo" && (
+                    <form action={insumoSetto} className="pr-2">
+                      <input type="hidden" name="producto_id" value={c.producto_id} />
+                      <input type="hidden" name="quitar" value="1" />
+                      <button aria-label={`Quitar ${c.nombre} de Setto`} className="h-8 w-8 rounded-full text-suave active:bg-fondo">✕</button>
+                    </form>
+                  )}
+                </li>
+              ))}
+              {!costos.length && <li className="px-4 py-8 text-center text-sm text-suave">Todavía no hay insumos. Agregalos abajo.</li>}
+            </ul>
+            <Link href="/precios?setto=1" className={`${btnCls} mt-3 block text-center`}>+ Agregar insumo de Setto</Link>
+            <p className="mt-2 px-1 text-[12px] text-suave">Lo que pasaste a la caja de Setto con producto elegido también aparece acá.</p>
+          </section>
+        )}
+
+        {!verCargados && !verSetto && (
           <section>
             <p className="mb-2 px-1 text-[13px] text-suave">Tocá uno para ver dónde conviene o cargar tu precio.</p>
             <ul className={filas}>
