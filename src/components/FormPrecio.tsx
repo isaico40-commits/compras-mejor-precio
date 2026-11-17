@@ -1,12 +1,12 @@
 import { inputCls } from "@/components/ui";
 
 export const MEDIDAS = [
-  { v: "kg", label: "kg" },
-  { v: "medio_kg", label: "½ kg" },
-  { v: "g", label: "gramos" },
-  { v: "l", label: "litros" },
-  { v: "ml", label: "cc / ml" },
-  { v: "u", label: "unidad" },
+  { v: "g", label: "g", texto: "gramos (g)" },
+  { v: "kg", label: "kg", texto: "kilos (kg)" },
+  { v: "medio_kg", label: "½ kg", texto: "medio kilo" },
+  { v: "ml", label: "ml", texto: "mililitros (ml / cc)" },
+  { v: "l", label: "l", texto: "litros (l)" },
+  { v: "u", label: "unid.", texto: "unidades" },
 ] as const;
 
 /** Convierte cantidad + unidad guardadas a la medida del selector */
@@ -19,27 +19,23 @@ export function medidaDe(cantidad: number | null, unidad: string | null) {
   return { medida: "u", cant: cantidad ?? 1 };
 }
 
-export function CamposMedida({ medida = "u", cant = 1 }: { medida?: string; cant?: number }) {
+/** Tamaño: número + unidad en un desplegable (para comparar por kilo o litro). */
+export function CamposMedida({ medida = "", cant }: { medida?: string; cant?: number | null }) {
   return (
     <div>
-      <p className="mb-1 text-sm font-semibold">Medida</p>
-      <div className="grid grid-cols-[5.5rem_1fr] gap-2">
-        <input name="cantidad" type="number" step="any" min="0.01" inputMode="decimal" defaultValue={cant} className={inputCls} aria-label="Cantidad" />
-        <div className="grid grid-cols-3 gap-1.5">
-          {MEDIDAS.map((m) => (
-            <label key={m.v} className="cursor-pointer">
-              <input type="radio" name="medida" value={m.v} defaultChecked={m.v === medida} className="peer sr-only" />
-              <span className="block rounded-lg border border-linea bg-tarjeta py-2 text-center text-sm font-medium peer-checked:border-marca peer-checked:bg-marca-suave peer-checked:text-marca">
-                {m.label}
-              </span>
-            </label>
-          ))}
-        </div>
+      <p className="text-sm font-semibold text-suave">Tamaño <span className="font-normal">(para comparar por kilo o litro)</span></p>
+      <div className="mt-1 grid grid-cols-2 gap-2">
+        <input name="cantidad" type="number" step="any" min="0.01" inputMode="decimal" defaultValue={cant ?? ""} placeholder="Ej: 500" aria-label="Tamaño" className={`${inputCls} num`} />
+        <select name="medida" defaultValue={medida} aria-label="Unidad" className={inputCls}>
+          <option value="">Unidad…</option>
+          {MEDIDAS.map((m) => <option key={m.v} value={m.v}>{m.texto}</option>)}
+        </select>
       </div>
     </div>
   );
 }
 
+/** Precio grande + dónde; promo y fecha quedan plegados. */
 export function CamposPrecio({
   supers, superId, precio, promo, detalle, fecha,
 }: {
@@ -47,25 +43,29 @@ export function CamposPrecio({
 }) {
   return (
     <>
-      <label className="block text-sm font-semibold">Dónde
-        <select name="supermercado_id" defaultValue={superId ?? ""} className={`${inputCls} mt-1`}>
-          <option value="">Elegí el lugar</option>
-          {supers.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-        </select>
-      </label>
-      <NuevoLugar />
-      <div className="grid grid-cols-2 gap-2">
-        <label className="text-sm font-semibold">Precio
-          <input name="precio" type="number" inputMode="decimal" step="0.01" min="0.01" required defaultValue={precio ?? ""} placeholder="$" className={`${inputCls} mt-1`} />
+      <div className="grid grid-cols-[1fr_1.3fr] gap-2">
+        <label className="text-sm font-semibold text-suave">Precio
+          <input name="precio" type="number" inputMode="decimal" step="0.01" min="0.01" required defaultValue={precio ?? ""} placeholder="$" className={`${inputCls} num mt-1 text-[18px] font-bold`} />
         </label>
-        <label className="text-sm font-semibold">Con promo
-          <input name="precio_promo" type="number" inputMode="decimal" step="0.01" min="0.01" defaultValue={promo ?? ""} placeholder="opcional" className={`${inputCls} mt-1`} />
+        <label className="text-sm font-semibold text-suave">Dónde
+          <select name="supermercado_id" defaultValue={superId ?? ""} className={`${inputCls} mt-1`}>
+            <option value="">Elegí</option>
+            {supers.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+          </select>
         </label>
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <input name="promo_detalle" defaultValue={detalle ?? ""} placeholder="Promo (2x1…)" className={inputCls} />
-        <input name="fecha" type="date" defaultValue={fecha} className={inputCls} />
-      </div>
+      <details>
+        <summary className="cursor-pointer text-sm font-semibold text-marca">¿No está el lugar?</summary>
+        <div className="mt-2"><NuevoLugar /></div>
+      </details>
+      <details open={!!(promo || detalle)}>
+        <summary className="cursor-pointer text-sm font-semibold text-marca">Promo u otra fecha</summary>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <input name="precio_promo" type="number" inputMode="decimal" step="0.01" min="0.01" defaultValue={promo ?? ""} placeholder="$ con promo" className={`${inputCls} num`} />
+          <input name="promo_detalle" defaultValue={detalle ?? ""} placeholder="Promo (2x1…)" className={inputCls} />
+          <input name="fecha" type="date" defaultValue={fecha} className={`${inputCls} col-span-2`} />
+        </div>
+      </details>
     </>
   );
 }

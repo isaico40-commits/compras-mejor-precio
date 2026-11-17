@@ -285,7 +285,9 @@ function medidaDelNombre(nombre: string | null): { unidad: string; cantidad: num
 
 /** Lee medida + cantidad del formulario: "medio_kg" + 2 -> 1 kg. */
 function leerMedida(form: FormData) {
-  const m = MEDIDAS[String(form.get("medida") ?? "u")] ?? MEDIDAS.u;
+  // Sin unidad elegida: la que diga el nombre ("Yerba 500 g"), o 1 unidad
+  if (!form.get("medida") || !form.get("cantidad")) return medidaDelNombre(txt(form.get("nombre"))) ?? { unidad: "un", cantidad: 1 };
+  const m = MEDIDAS[String(form.get("medida"))] ?? MEDIDAS.u;
   const cant = (num(form.get("cantidad")) ?? 1) * m.factor;
   return { unidad: m.unidad, cantidad: cant };
 }

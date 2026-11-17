@@ -2,7 +2,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { guardarPrecioNuevo, salir } from "@/app/actions";
 import { pesos, presentacion, filtroBusqueda } from "@/lib/formato";
-import { Encabezado, Tarjeta, inputCls, btnCls, btnSecCls } from "@/components/ui";
+import { Encabezado, inputCls, btnCls, btnSecCls } from "@/components/ui";
+import { Icono } from "@/components/IconoProducto";
+import { categoriaDe } from "@/lib/categorias";
 import { CamposMedida, CamposPrecio } from "@/components/FormPrecio";
 import { armarLista } from "@/lib/lista";
 
@@ -24,6 +26,7 @@ export default async function PreciosPage({
     .order("fecha", { ascending: false }).order("created_at", { ascending: false }).limit(200);
   if (sp.s) mios = mios.eq("supermercado_id", sp.s);
 
+  const verCargados = sp.ver === "cargados";
   const [{ data: supers }, { data: resultados }, { data: elegido }, { data: cargados }, lista] = await Promise.all([
     supabase.from("supermercados").select("id, nombre").eq("oculto", false).order("nombre"),
     q
@@ -32,8 +35,8 @@ export default async function PreciosPage({
     sp.producto
       ? supabase.from("productos").select("id, nombre, marca, dim, cant_base").eq("id", sp.producto).maybeSingle()
       : Promise.resolve({ data: null as Prod | null }),
-    mios,
-    sp.ver === "lista" ? armarLista(supabase).catch(() => null) : Promise.resolve(null),
+    verCargados ? mios : Promise.resolve({ data: [] }),
+    !verCargados ? armarLista(supabase).catch(() => null) : Promise.resolve(null),
   ]);
   const deItem = sp.item ? (
     <>
@@ -43,142 +46,146 @@ export default async function PreciosPage({
   ) : null;
   const formAbierto = !!elegido || sp.nuevo !== undefined;
 
+  const fecha = (f: string) => f.split("-").reverse().slice(0, 2).join("/");
+  const chip = "inline-flex max-w-full items-center truncate rounded-full px-2 py-0.5 text-[12px] font-semibold";
+  const filas = "divide-y divide-linea overflow-hidden rounded-3xl bg-tarjeta shadow-sm ring-1 ring-linea";
+
   return (
     <main>
-      <Encabezado titulo="Precios" sub="Los que cargaste vos (Makro, feria, góndola)">
+      <Encabezado titulo="Precios" sub="Cargá y corregí lo que pagás">
         <form action={salir}><button className="pb-1 text-sm text-suave">Salir</button></form>
       </Encabezado>
 
-      <div className="space-y-5 px-4">
-        {sp.ok && <p className="rounded-xl bg-marca-suave p-3 text-sm font-medium text-marca">Listo, precio guardado.</p>}
+      <div className="space-y-5 px-4 pb-28">
+        {sp.ok && <p className="rounded-2xl bg-menta px-4 py-3 text-[15px] font-semibold text-menta-tinta">✓ Precio guardado.</p>}
 
+        {/* Cargar un precio: buscar o crear */}
         {!formAbierto && (
-          <Tarjeta className="space-y-3 p-4">
-            <p className="font-bold">Cargar un precio</p>
+          <section className="space-y-3 rounded-3xl bg-tarjeta p-4 shadow-sm ring-1 ring-linea">
+            <p className="text-[17px] font-bold">Cargar un precio</p>
             <form className="flex gap-2">
-              <input name="q" defaultValue={q} placeholder="Buscá el producto" className={inputCls} />
+              <input name="q" defaultValue={q} placeholder="🔍 Buscá el producto" className={inputCls} />
               <button className={btnSecCls}>Buscar</button>
             </form>
             {q && (
-              <ul className="divide-y divide-linea overflow-hidden rounded-xl border border-linea">
+              <ul className="divide-y divide-linea overflow-hidden rounded-2xl ring-1 ring-linea">
                 {(resultados as Prod[] | null)?.map((p) => (
                   <li key={p.id}>
-                    <Link href={`/precios?producto=${p.id}`} className="flex justify-between gap-2 px-3 py-2.5 text-sm active:bg-fondo">
-                      <span>{p.nombre}</span>
-                      <span className="shrink-0 text-suave">{presentacion(p.cant_base, p.dim)}</span>
+                    <Link href={`/precios?producto=${p.id}`} className="flex items-center gap-3 px-3 py-2.5 active:bg-fondo">
+                      <Icono nombre={p.nombre} />
+                      <span className="min-w-0 flex-1 text-[15px] font-medium leading-snug">{p.nombre}</span>
+                      {presentacion(p.cant_base, p.dim) && <span className={`${chip} shrink-0 bg-fondo text-suave`}>{presentacion(p.cant_base, p.dim)}</span>}
                     </Link>
                   </li>
                 ))}
-                {!resultados?.length && <li className="px-3 py-2.5 text-sm text-suave">No está en el catálogo.</li>}
+                {!resultados?.length && <li className="px-3 py-3 text-sm text-suave">No está en el catálogo. Crealo abajo.</li>}
               </ul>
             )}
             <Link href={`/precios?nuevo=${encodeURIComponent(q)}`} className={`${btnCls} block text-center`}>
-              {q ? `Crear “${q}”` : "Producto nuevo"}
+              {q ? `+ Crear “${q}”` : "+ Producto nuevo"}
             </Link>
-          </Tarjeta>
+          </section>
         )}
 
         {formAbierto && (
-          <Tarjeta className="p-4">
-            <form action={guardarPrecioNuevo} className="space-y-3">
+          <section className="overflow-hidden rounded-3xl bg-tarjeta shadow-sm ring-1 ring-linea">
+            <form action={guardarPrecioNuevo} className="space-y-3 p-4">
               {deItem}
-              {sp.item && <p className="rounded-lg bg-marca-suave px-3 py-2 text-sm text-marca">Queda fijado en tu lista con este precio y este lugar.</p>}
               {elegido ? (
-                <>
+                <div className="flex items-center gap-3">
                   <input type="hidden" name="producto_id" value={elegido.id} />
-                  <p className="font-bold">{elegido.nombre}</p>
-                  {presentacion(elegido.cant_base, elegido.dim) && <p className="text-sm text-suave">{presentacion(elegido.cant_base, elegido.dim)}</p>}
-                </>
+                  <Icono nombre={elegido.nombre} />
+                  <span className="min-w-0">
+                    <span className="block text-[17px] font-bold leading-snug">{elegido.nombre}</span>
+                    {presentacion(elegido.cant_base, elegido.dim) && <span className={`${chip} mt-0.5 bg-fondo text-suave`}>{presentacion(elegido.cant_base, elegido.dim)}</span>}
+                  </span>
+                </div>
               ) : (
                 <>
-                  <label className="block text-sm font-semibold">Producto
-                    <input name="nombre" required defaultValue={sp.nuevo ?? ""} placeholder="Ej: Dulce de leche repostero" className={`${inputCls} mt-1`} />
+                  <p className="text-[17px] font-bold">Producto nuevo</p>
+                  <label className="block text-sm font-semibold text-suave">Marca / producto
+                    <input name="nombre" required defaultValue={sp.nuevo ?? ""} placeholder="Ej: Dulce de leche La Serenísima" className={`${inputCls} mt-1`} />
                   </label>
-                  <input name="marca" placeholder="Marca (opcional)" className={inputCls} />
-                  <CamposMedida medida="kg" cant={1} />
+                  <CamposMedida />
                 </>
               )}
               <CamposPrecio supers={supers ?? []} fecha={hoy} />
-              <div className="flex gap-2">
+              {sp.item && <p className="text-[13px] text-suave">Queda fijo en tu lista con este precio y este lugar.</p>}
+              <div className="flex gap-2 pt-1">
                 <Link href="/precios" className={`${btnSecCls} flex-1 text-center`}>Cancelar</Link>
                 <button className={`${btnCls} flex-[2]`}>Guardar precio</button>
               </div>
             </form>
-          </Tarjeta>
+          </section>
         )}
 
-        <div className="grid grid-cols-2 gap-1 rounded-xl bg-linea/60 p-1 text-sm font-semibold">
-          <Link href="/precios" className={`rounded-lg py-2 text-center ${sp.ver !== "lista" ? "bg-tarjeta shadow-sm" : "text-suave"}`}>Cargados por vos</Link>
-          <Link href="/precios?ver=lista" className={`rounded-lg py-2 text-center ${sp.ver === "lista" ? "bg-tarjeta shadow-sm" : "text-suave"}`}>Tu lista</Link>
+        <div className="grid grid-cols-2 gap-1 rounded-2xl bg-linea/60 p-1 text-[14px] font-semibold">
+          <Link href="/precios" className={`rounded-xl py-2 text-center ${!verCargados ? "bg-tarjeta shadow-sm" : "text-suave"}`}>📋 Tu lista</Link>
+          <Link href="/precios?ver=cargados" className={`rounded-xl py-2 text-center ${verCargados ? "bg-tarjeta shadow-sm" : "text-suave"}`}>✍️ Cargados por vos</Link>
         </div>
 
-        {sp.ver === "lista" && (
+        {!verCargados && (
           <section>
-            <p className="mb-2 px-1 text-sm text-suave">Todo lo de tu lista y de la caja de Setto. Tocá uno para cargar tu precio y el lugar donde lo comprás.</p>
-            <ul className="divide-y divide-linea overflow-hidden rounded-2xl border border-linea bg-tarjeta">
+            <p className="mb-2 px-1 text-[13px] text-suave">Tocá uno para ver dónde conviene o cargar tu precio.</p>
+            <ul className={filas}>
               {lista?.entradas.map((e) => {
                 const r = e.recomendado;
-                const href = `/precios?nuevo=${encodeURIComponent(e.titulo)}&item=${e.origen}:${e.itemId}${e.origen === "setto" ? `&texto=${encodeURIComponent(e.texto ?? "")}` : ""}`;
+                const conPrecio = r?.precio != null && (!e.lugar || e.lugar.id === r.superId);
                 return (
                   <li key={e.key}>
-                    <Link href={href} className="flex items-center justify-between gap-3 px-4 py-3 active:bg-fondo">
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium">{e.titulo}{e.origen === "setto" && <span className="ml-1.5 rounded bg-fondo px-1 text-[10px] font-bold text-suave">S</span>}</span>
-                        <span className="text-sm text-suave">
-                          {e.lugar ? `Lo comprás en ${e.lugar.nombre}` : r ? `Más barato en ${r.super}` : e.analizando ? "Analizando…" : "Sin precio"}
-                        </span>
+                    <Link href={`/item/${e.origen}/${e.itemId}`} className="flex items-center gap-3 px-3 py-2.5 active:bg-fondo">
+                      <Icono nombre={e.titulo} cat={categoriaDe(e.titulo, e.rubro, e.categoria).id} setto={e.origen === "setto"} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[16px] font-semibold">{e.titulo}</span>
+                        {e.lugar ? <span className={`${chip} mt-0.5 bg-durazno text-durazno-tinta`}>{e.lugar.nombre}</span>
+                          : r ? <span className={`${chip} mt-0.5 bg-cielo text-cielo-tinta`}>{r.super}</span>
+                          : e.analizando ? <span className={`${chip} mt-0.5 bg-fondo text-suave`}>buscando…</span> : null}
                       </span>
-                      <span className="flex shrink-0 items-center gap-2">
-                        {r?.precio != null && (!e.lugar || e.lugar.id === r.superId)
-                          ? <span className="num font-semibold">{pesos(r.precio)}</span>
-                          : <span className="text-sm font-semibold text-marca">Cargar</span>}
-                        <svg viewBox="0 0 24 24" className="h-4 w-4 text-suave" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" /></svg>
-                      </span>
+                      {conPrecio
+                        ? <span className="num shrink-0 text-[16px] font-bold">{pesos(r!.precio)}</span>
+                        : <span className={`${chip} shrink-0 bg-marca text-white`}>+ Cargar</span>}
                     </Link>
                   </li>
                 );
               })}
-              {!lista?.entradas.length && <li className="px-4 py-6 text-center text-sm text-suave">Tu lista está vacía.</li>}
+              {!lista?.entradas.length && <li className="px-4 py-8 text-center text-sm text-suave">Tu lista está vacía.</li>}
             </ul>
           </section>
         )}
 
-        {sp.ver !== "lista" && <section>
-          <div className="mb-2 flex items-center justify-between px-1">
-            <h2 className="font-bold">Precios cargados</h2>
-            <form>
-              <select name="s" defaultValue={sp.s ?? ""} className="rounded-lg border border-linea bg-tarjeta px-2 py-1 text-sm" aria-label="Filtrar por súper">
-                <option value="">Todos</option>
-                {supers?.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-              </select>
-              <button className="ml-1 text-sm font-semibold text-marca">Filtrar</button>
-            </form>
-          </div>
-          <ul className="divide-y divide-linea overflow-hidden rounded-2xl border border-linea bg-tarjeta">
-            {cargados?.map((c) => {
-              const prod = c.productos as unknown as { nombre: string; dim: string | null; cant_base: number | null } | null;
-              const sup = c.supermercados as unknown as { nombre: string } | null;
-              return (
-                <li key={c.id}>
-                  <Link href={`/precios/${c.id}`} className="flex items-center justify-between gap-3 px-4 py-3 active:bg-fondo">
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium">{prod?.nombre}</span>
-                      <span className="text-sm text-suave">
-                        {sup?.nombre}{presentacion(prod?.cant_base, prod?.dim) && ` · ${presentacion(prod?.cant_base, prod?.dim)}`} · {c.fecha.split("-").reverse().slice(0, 2).join("/")}
+        {verCargados && (
+          <section>
+            <div className="-mx-4 mb-2 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+              <Link href="/precios?ver=cargados" className={`shrink-0 rounded-full px-3 py-1.5 text-[13px] font-semibold ${!sp.s ? "bg-tinta text-white" : "bg-tarjeta text-suave ring-1 ring-linea"}`}>Todos</Link>
+              {supers?.map((x) => (
+                <Link key={x.id} href={`/precios?ver=cargados&s=${x.id}`} className={`shrink-0 rounded-full px-3 py-1.5 text-[13px] font-semibold ${sp.s === x.id ? "bg-tinta text-white" : "bg-tarjeta text-suave ring-1 ring-linea"}`}>{x.nombre}</Link>
+              ))}
+            </div>
+            <ul className={filas}>
+              {cargados?.map((c) => {
+                const prod = c.productos as unknown as { nombre: string; dim: string | null; cant_base: number | null } | null;
+                const sup = c.supermercados as unknown as { nombre: string } | null;
+                return (
+                  <li key={c.id}>
+                    <Link href={`/precios/${c.id}`} className="flex items-center gap-3 px-3 py-2.5 active:bg-fondo">
+                      <Icono nombre={prod?.nombre ?? ""} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[15px] font-semibold">{prod?.nombre}</span>
+                        <span className="mt-0.5 flex flex-wrap gap-1">
+                          {sup?.nombre && <span className={`${chip} bg-cielo text-cielo-tinta`}>{sup.nombre}</span>}
+                          <span className={`${chip} bg-fondo text-suave`}>{fecha(c.fecha)}</span>
+                        </span>
                       </span>
-                    </span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      <span className="num font-semibold">{pesos(c.precio_promo ?? c.precio)}</span>
-                      <svg viewBox="0 0 24 24" className="h-4 w-4 text-suave" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" /></svg>
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
-            {!cargados?.length && <li className="px-4 py-6 text-center text-sm text-suave">Todavía no cargaste precios.</li>}
-          </ul>
-          <p className="mt-2 px-1 text-sm text-suave">Los precios de los súpers grandes se actualizan solos todos los días desde Precios Claros.</p>
-        </section>}
+                      <span className="num shrink-0 text-[16px] font-bold">{pesos(c.precio_promo ?? c.precio)}</span>
+                    </Link>
+                  </li>
+                );
+              })}
+              {!cargados?.length && <li className="px-4 py-8 text-center text-sm text-suave">Todavía no cargaste precios{sp.s ? " en este lugar" : ""}.</li>}
+            </ul>
+            <p className="mt-2 px-1 text-[13px] text-suave">Los súpers grandes se actualizan solos todos los días.</p>
+          </section>
+        )}
       </div>
     </main>
   );

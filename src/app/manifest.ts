@@ -5,6 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Compras al mejor precio",
     short_name: "Compras",
     description: "Tu lista de compras y dónde conviene comprar cada cosa en Mar del Plata.",
+    id: "/",
     start_url: "/",
     display: "standalone",
     background_color: "#f5f5f0",
@@ -14,9 +15,9 @@ export default function manifest(): MetadataRoute.Manifest {
     share_target: { action: "/agregar", method: "GET", params: { title: "title", text: "text", url: "url" } },
     // Mantener apretado el ícono
     shortcuts: [
-      { name: "Dictar compras", short_name: "Dictar", url: "/agregar?voz=1", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
-      { name: "En el súper", short_name: "En el súper", url: "/super", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
-      { name: "Descuentos de hoy", short_name: "Descuentos", url: "/descuentos", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+      { name: "Dictar compras", short_name: "Dictar", url: "/agregar?voz=1&atajo=1", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+      { name: "En el súper", short_name: "En el súper", url: "/super?atajo=1", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+      { name: "Descuentos de hoy", short_name: "Descuentos", url: "/descuentos?atajo=1", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
     ],
     icons: [
       { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
