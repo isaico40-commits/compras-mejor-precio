@@ -11,7 +11,8 @@ import { Destino } from "@/components/Destino";
 /** Pantalla para lo que llega compartido (Samsung Notes, WhatsApp…), por voz o por un link de rutina. */
 const nombreCat = (id: string | null) => CATEGORIAS.find((c) => c.id === id)?.nombre ?? null;
 
-export function AgregarDesdeTexto({ inicial, auto, voz, destinoInicial = "casa" }: { inicial: ItemParseado[]; auto: boolean; voz: boolean; destinoInicial?: "casa" | "setto" }) {
+export function AgregarDesdeTexto({ inicial, auto, voz, pegar = false, destinoInicial = "casa" }: { inicial: ItemParseado[]; auto: boolean; voz: boolean; pegar?: boolean; destinoInicial?: "casa" | "setto" }) {
+  const [pegado, setPegado] = useState("");
   const [destino, setDestino] = useState<"casa" | "setto">(destinoInicial);
   const [items, setItems] = useState<{ t: string; cat: string | null; on: boolean }[]>(inicial.map((i) => ({ t: i.nombre, cat: i.categoria, on: true })));
   const [hecho, setHecho] = useState<{ nuevos: string[]; ya: number } | null>(null);
@@ -54,6 +55,16 @@ export function AgregarDesdeTexto({ inicial, auto, voz, destinoInicial = "casa" 
   const elegidos = items.filter((i) => i.on).map((i) => ({ nombre: i.t, categoria: i.cat }));
   return (
     <div className="space-y-5">
+      {!items.length && !voz && (
+        <div className="space-y-2 rounded-3xl bg-tarjeta p-4 shadow-sm ring-1 ring-linea">
+          <p className="text-[16px] font-bold">📋 Pegá tu lista</p>
+          <p className="text-[13px] text-suave">En Samsung Notes: mantené apretado → Seleccionar todo → Copiar. Acá: mantené apretado el cuadro → Pegar.</p>
+          <textarea value={pegado} onChange={(e) => setPegado(e.target.value)} autoFocus={pegar} rows={5} placeholder={"Leche\nYerba\nVerdulería\n- tomate"}
+            className="w-full rounded-2xl border border-linea bg-fondo px-3 py-2.5 text-[15px] outline-none focus:border-marca" />
+          <button disabled={!pegado.trim()} onClick={() => { sumarDictado(pegado); setPegado(""); }}
+            className="w-full rounded-xl bg-marca py-3 font-semibold text-white disabled:opacity-50">Revisar lista</button>
+        </div>
+      )}
       <Microfono onTexto={sumarDictado} auto={voz} grande />
       {items.length > 0 && (
         <>

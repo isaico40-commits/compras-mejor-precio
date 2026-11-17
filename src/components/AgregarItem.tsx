@@ -59,7 +59,24 @@ export function AgregarItem() {
         <Microfono onTexto={agregarTexto} />
         <Boton />
       </form>
-      <Destino valor={destino} onCambio={setDestino} />
+      <div className="flex items-center justify-between gap-2">
+        <Destino valor={destino} onCambio={setDestino} />
+        <button
+          type="button"
+          onClick={async () => {
+            // Lo copiado de Samsung Notes (o cualquier app): se revisa antes de agregar
+            const extra = destino === "setto" ? "&destino=setto" : "";
+            try {
+              const t = (await navigator.clipboard.readText()).trim();
+              if (t) { router.push(`/agregar?text=${encodeURIComponent(t)}${extra}`); return; }
+            } catch {}
+            router.push(`/agregar?pegar=1${extra}`);
+          }}
+          className="mt-2 shrink-0 rounded-full bg-lila px-3 py-1.5 text-[13px] font-semibold text-lila-tinta active:opacity-70"
+        >
+          📋 Pegar lista
+        </button>
+      </div>
       {resultados && resultados.length > 0 && (
         <div className="mt-2 rounded-2xl bg-menta p-3">
           <div className="mb-1 flex items-center justify-between">
