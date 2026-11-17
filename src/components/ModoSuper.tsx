@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icono } from "@/components/IconoProducto";
+import { EVENTO_OFERTA, type OfertaSuper } from "@/components/OfertasSuper";
 import { escanear, precioGondola, productoNuevoEan, terminarCompra, terminarEscaneo, type Escaneo } from "@/app/actions";
 
 export type PromoHoy = { porcentaje: number; tope: number | null; minimo: number | null; medio: string };
@@ -35,7 +36,7 @@ const SOBREPRECIO = 1.05;
 const fmt = (n: number) => "$" + Math.round(n).toLocaleString("es-AR");
 
 /** Modo súper: lista y carrito en una sola pantalla, con escáner de códigos. */
-export function ModoSuper({ superId, nombreSuper, promo, filas }: { superId: string; nombreSuper: string; promo: PromoHoy | null; filas: FilaLista[] }) {
+export function ModoSuper({ superId, nombreSuper, promo, filas, abajo }: { superId: string; nombreSuper: string; promo: PromoHoy | null; filas: FilaLista[]; abajo?: React.ReactNode }) {
   const router = useRouter();
   const hoy = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
   const claveLS = `super:${superId}:${hoy}`;
@@ -49,7 +50,8 @@ export function ModoSuper({ superId, nombreSuper, promo, filas }: { superId: str
   const [fin, setFin] = useState<string | null>(null);
   const [verOtroLado, setVerOtroLado] = useState(false);
   const [teclado, setTeclado] = useState(false);
-  const [abiertoId, setAbiertoId] = useState<string | null>(null);
+  const [verCarro, setVerCarro] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const video = useRef<HTMLVideoElement>(null);
   const ultimo = useRef<{ ean: string; t: number }>({ ean: "", t: 0 });
   const pausa = useRef(false);
@@ -68,6 +70,26 @@ export function ModoSuper({ superId, nombreSuper, promo, filas }: { superId: str
       return xs;
     });
   }, [claveLS]);
+
+  // Oferta tocada abajo: al carrito (si ya estaba, suma uno)
+  useEffect(() => {
+    const h = (ev: Event) => {
+      const o = (ev as CustomEvent<OfertaSuper>).detail;
+      const fila = filasRef.current.find((f) => f.productoId === o.producto_id);
+      if (navigator.vibrate) navigator.vibrate(30);
+      cambiar((prev) => {
+        const i = prev.findIndex((c) => c.productoId === o.producto_id);
+        if (i >= 0) return prev.map((c, j) => (j === i ? { ...c, cantidad: c.cantidad + 1 } : c));
+        const libre = fila && !prev.some((c) => c.rowKey === fila.key);
+        return [{ id: libre ? fila!.key : `oferta-${o.producto_id}`, rowKey: libre ? fila!.key : null, productoId: o.producto_id, nombre: fila?.titulo ?? o.nombre,
+          precio: o.precio, cantidad: 1, deMas: 0, aviso: `Oferta: ${o.ahorro}% menos que en ${o.super_sig}`, escaneado: false, cat: fila?.cat ?? null }, ...prev];
+      });
+      setToast(`🛒 ${o.nombre.split(" ").slice(0, 4).join(" ")} al carrito`);
+    };
+    window.addEventListener(EVENTO_OFERTA, h);
+    return () => window.removeEventListener(EVENTO_OFERTA, h);
+  }, [cambiar]);
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 1800); return () => clearTimeout(t); }, [toast]);
 
   const enCarro = useMemo(() => new Set(carro.map((c) => c.rowKey).filter(Boolean)), [carro]);
   const porComprar = filas.filter((f) => !enCarro.has(f.key));
@@ -317,78 +339,103 @@ export function ModoSuper({ superId, nombreSuper, promo, filas }: { superId: str
           <ul className="divide-y divide-linea overflow-hidden rounded-3xl bg-tarjeta shadow-sm ring-1 ring-linea">{aca.map((f) => <Fila key={f.key} f={f} />)}</ul>
         </section>
       )}
-      {otro.length > 0 && (
-        <section>
-          <button onClick={() => setVerOtroLado(!verOtroLado)} className="flex w-full items-center justify-between rounded-2xl bg-durazno px-4 py-3 text-left">
-            <span className="text-[15px] font-semibold text-durazno-tinta">🔀 {otro.length} {otro.length === 1 ? "conviene" : "convienen"} en otro súper</span>
-            <span className={`text-durazno-tinta transition-transform ${verOtroLado ? "rotate-180" : ""}`}>▾</span>
-          </button>
-          {verOtroLado && <ul className="mt-2 divide-y divide-linea overflow-hidden rounded-3xl bg-tarjeta shadow-sm ring-1 ring-linea">{otro.map((f) => <Fila key={f.key} f={f} />)}</ul>}
-        </section>
+      {/* Abajo, juntos: lo que conviene en otro lado y las ofertas de acá */}
+      {(otro.length > 0 || abajo) && (
+        <div className="space-y-2 pt-2">
+        {otro.length > 0 && (
+          <section>
+            <button onClick={() => setVerOtroLado(!verOtroLado)} className="flex w-full items-center justify-between rounded-2xl bg-durazno px-4 py-3 text-left">
+              <span className="text-[15px] font-semibold text-durazno-tinta">🔀 {otro.length} {otro.length === 1 ? "conviene" : "convienen"} en otro súper</span>
+              <span className={`text-durazno-tinta transition-transform ${verOtroLado ? "rotate-180" : ""}`}>▾</span>
+            </button>
+            {verOtroLado && <ul className="mt-2 divide-y divide-linea overflow-hidden rounded-3xl bg-tarjeta shadow-sm ring-1 ring-linea">{otro.map((f) => <Fila key={f.key} f={f} />)}</ul>}
+          </section>
+        )}
+
+          {abajo}
+        </div>
       )}
 
-      {/* Carrito */}
-      <section>
-        <h2 className="mb-2 flex items-baseline justify-between px-1">
-          <span className="text-[18px] font-bold">🛒 Carrito</span>
-          {carro.length > 0 && <span className="text-[13px] text-suave">{nProductos} {nProductos === 1 ? "producto" : "productos"}</span>}
-        </h2>
-        {!carro.length ? (
-          <div className="rounded-3xl border-2 border-dashed border-linea px-4 py-8 text-center text-suave">
-            <p className="text-3xl">🛒</p>
-            <p className="mt-1 text-[15px]">Vacío. Escaneá o tocá algo de la lista.</p>
+      {toast && <p className="fixed inset-x-4 bottom-[calc(150px+env(safe-area-inset-bottom))] z-30 mx-auto max-w-sm rounded-full bg-tinta px-4 py-2.5 text-center text-sm font-semibold text-white shadow-lg">{toast}</p>}
+
+      {/* Barra fija: tocá para ver el carrito */}
+      {carro.length > 0 && (
+        <div className="fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-10 px-4">
+          <div className="mx-auto flex max-w-xl items-center justify-between gap-2 rounded-3xl bg-tinta py-2.5 pl-2.5 pr-2.5 text-white shadow-xl">
+            <button onClick={() => setVerCarro(true)} className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl py-0.5 pl-2.5 text-left active:bg-white/10">
+              <span className="relative text-[26px]">🛒<span className="num absolute -right-2 -top-1 rounded-full bg-marca px-1.5 text-[11px] font-bold leading-5">{nProductos}</span></span>
+              <span className="min-w-0">
+                <span className="num block text-[22px] font-bold leading-tight">{fmt(total - descHoy)}</span>
+                <span className="block truncate text-[12px] opacity-75">Ver carrito ▴{deMas > 0 ? ` · ⚠️ ${fmt(deMas)} de más` : ""}</span>
+              </span>
+            </button>
+            <button onClick={terminar} disabled={ocupado} className="rounded-2xl bg-marca px-5 py-3 text-[15px] font-bold disabled:opacity-50">Terminar ✓</button>
           </div>
-        ) : (
-          <ul className="divide-y divide-linea overflow-hidden rounded-3xl bg-tarjeta shadow-sm ring-1 ring-linea">
-            {carro.map((c) => {
-              const abierto = abiertoId === c.id;
-              return (
-                <li key={c.id}>
-                  <button onClick={() => setAbiertoId(abierto ? null : c.id)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left">
+        </div>
+      )}
+
+      {/* Carrito en pop-up, con el detalle */}
+      {verCarro && (
+        <div className="fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setVerCarro(false)}>
+          <div className="mx-auto flex max-h-[88dvh] w-full max-w-xl flex-col rounded-t-3xl bg-fondo pb-[env(safe-area-inset-bottom)]" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 pt-3">
+              <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-linea" />
+              <div className="flex items-center justify-between">
+                <p className="text-[20px] font-bold">🛒 Tu carrito</p>
+                <button onClick={() => setVerCarro(false)} aria-label="Cerrar" className="h-9 w-9 rounded-full bg-tarjeta text-lg ring-1 ring-linea">✕</button>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                <span className="rounded-2xl bg-tarjeta px-2 py-2 ring-1 ring-linea">
+                  <span className="block text-[11px] font-semibold uppercase text-suave">Productos</span>
+                  <span className="num block text-[18px] font-bold">{nProductos}</span>
+                </span>
+                <span className={`rounded-2xl px-2 py-2 ${descHoy > 0 ? "bg-menta text-menta-tinta" : "bg-tarjeta ring-1 ring-linea"}`}>
+                  <span className="block text-[11px] font-semibold uppercase opacity-75">Descuento</span>
+                  <span className="num block text-[18px] font-bold">{descHoy > 0 ? `−${fmt(descHoy)}` : "—"}</span>
+                </span>
+                <span className={`rounded-2xl px-2 py-2 ${deMas > 0 ? "bg-durazno text-durazno-tinta" : "bg-cielo text-cielo-tinta"}`}>
+                  <span className="block text-[11px] font-semibold uppercase opacity-75">{deMas > 0 ? "De más" : "Precio"}</span>
+                  <span className="num block text-[18px] font-bold">{deMas > 0 ? fmt(deMas) : "👍 OK"}</span>
+                </span>
+              </div>
+              {promo && descHoy === 0 && promo.minimo && <p className="mt-2 text-center text-[13px] text-suave">El −{promo.porcentaje}% de {promo.medio} arranca desde {fmt(promo.minimo)}.</p>}
+            </div>
+            <ul className="mt-3 flex-1 space-y-2 overflow-y-auto px-4 pb-3">
+              {carro.map((c) => (
+                <li key={c.id} className="rounded-3xl bg-tarjeta p-3 shadow-sm ring-1 ring-linea">
+                  <div className="flex items-center gap-3">
                     <Icono nombre={c.nombre} cat={c.cat} marca={c.deMas > 0 ? "caro" : "ok"} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[16px] font-semibold">{c.nombre}</span>
-                      {c.cantidad > 1 && <span className="num text-[13px] text-suave">{c.cantidad} × {c.precio != null ? fmt(c.precio) : "—"}</span>}
+                      <span className="num text-[13px] text-suave">{c.cantidad} × {c.precio != null ? fmt(c.precio) : "sin precio"}{c.escaneado ? " · escaneado" : ""}</span>
                     </span>
-                    <span className={`num shrink-0 text-[16px] font-bold ${c.deMas > 0 ? "text-durazno-tinta" : ""}`}>{c.precio != null ? fmt(c.precio * c.cantidad) : "$ ?"}</span>
-                  </button>
-                  {abierto && (
-                    <div className="space-y-2 bg-fondo px-3 pb-3 pt-2">
-                      {(c.aviso || c.deMas > 0) && (
-                        <p className={`rounded-xl px-3 py-2 text-sm ${c.deMas > 0 ? "bg-durazno text-durazno-tinta" : "bg-menta text-menta-tinta"}`}>
-                          {c.deMas > 0 ? `⚠️ Pagás ${fmt(c.deMas)} de más. ${c.aviso ?? ""}` : `✓ ${c.aviso}`}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-2">
-                        <span className="flex items-center rounded-full bg-tarjeta ring-1 ring-linea">
-                          <button onClick={() => cant(c.id, -1)} className="h-10 w-10 text-lg font-bold" aria-label="menos">−</button>
-                          <span className="num w-6 text-center font-bold">{c.cantidad}</span>
-                          <button onClick={() => cant(c.id, 1)} className="h-10 w-10 text-lg font-bold" aria-label="más">+</button>
-                        </span>
-                        <button onClick={() => corregirPrecio(c)} className="h-10 flex-1 rounded-full bg-tarjeta text-sm font-semibold ring-1 ring-linea">✏️ Precio</button>
-                        <button onClick={() => { sacar(c.id); setAbiertoId(null); }} className="h-10 rounded-full bg-tarjeta px-4 text-sm font-semibold text-alerta ring-1 ring-linea">Sacar</button>
-                      </div>
-                    </div>
+                    <span className={`num shrink-0 text-[17px] font-bold ${c.deMas > 0 ? "text-durazno-tinta" : ""}`}>{c.precio != null ? fmt(c.precio * c.cantidad) : "$ ?"}</span>
+                  </div>
+                  {(c.aviso || c.deMas > 0) && (
+                    <p className={`mt-2 rounded-xl px-3 py-1.5 text-[13px] font-medium ${c.deMas > 0 ? "bg-durazno text-durazno-tinta" : "bg-menta text-menta-tinta"}`}>
+                      {c.deMas > 0 ? `⚠️ ${fmt(c.deMas)} de más · ${c.aviso ?? ""}` : `✓ ${c.aviso}`}
+                    </p>
                   )}
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="flex items-center rounded-full bg-fondo ring-1 ring-linea">
+                      <button onClick={() => cant(c.id, -1)} className="h-9 w-9 text-lg font-bold" aria-label="menos">−</button>
+                      <span className="num w-6 text-center font-bold">{c.cantidad}</span>
+                      <button onClick={() => cant(c.id, 1)} className="h-9 w-9 text-lg font-bold" aria-label="más">+</button>
+                    </span>
+                    <button onClick={() => corregirPrecio(c)} className="h-9 flex-1 rounded-full bg-fondo text-sm font-semibold ring-1 ring-linea">✏️ Precio</button>
+                    <button onClick={() => sacar(c.id)} className="h-9 rounded-full bg-fondo px-4 text-sm font-semibold text-alerta ring-1 ring-linea">Sacar</button>
+                  </div>
                 </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-
-      {/* Barra fija */}
-      {carro.length > 0 && (
-        <div className="fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-10 px-4">
-          <div className="mx-auto flex max-w-xl items-center justify-between gap-3 rounded-3xl bg-tinta py-2.5 pl-5 pr-2.5 text-white shadow-xl">
-            <span className="min-w-0">
-              <span className="num block text-[24px] font-bold leading-tight">{fmt(total - descHoy)}</span>
-              <span className="block truncate text-[13px] opacity-75">
-                {descHoy > 0 ? `ya con −${fmt(descHoy)} de ${promo!.medio}` : `${nProductos} ${nProductos === 1 ? "producto" : "productos"}`}
-                {sinPrecio ? ` · ${sinPrecio} sin precio` : ""}
-              </span>
-            </span>
-            <button onClick={terminar} disabled={ocupado} className="rounded-2xl bg-marca px-5 py-3 text-[15px] font-bold disabled:opacity-50">Terminar ✓</button>
+              ))}
+              {!carro.length && <li className="py-10 text-center text-suave">Vacío. Escaneá o tocá algo de la lista.</li>}
+            </ul>
+            <div className="border-t border-linea px-4 py-3">
+              <div className="mb-2 flex items-baseline justify-between">
+                <span className="text-[15px] text-suave">Total{sinPrecio ? ` (${sinPrecio} sin precio)` : ""}</span>
+                <span className="num text-[26px] font-bold">{fmt(total - descHoy)}</span>
+              </div>
+              <button onClick={() => { setVerCarro(false); terminar(); }} disabled={ocupado || !carro.length} className="w-full rounded-2xl bg-marca py-3.5 text-[16px] font-bold text-white disabled:opacity-50">Terminar compra ✓</button>
+            </div>
           </div>
         </div>
       )}

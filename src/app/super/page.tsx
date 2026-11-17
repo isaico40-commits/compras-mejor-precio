@@ -7,7 +7,8 @@ import { Suspense } from "react";
 import { categoriaDe } from "@/lib/categorias";
 import { ModoSuper, type FilaLista } from "@/components/ModoSuper";
 import { leerDescuentos, mejorDescuento, hoyAR, textoDescuento, DIAS } from "@/lib/descuentos";
-import { Encabezado, Pill } from "@/components/ui";
+import { Encabezado } from "@/components/ui";
+import { OfertasSuper, type OfertaSuper } from "@/components/OfertasSuper";
 
 type Oportunidad = {
   producto_id: string; nombre: string; base: string | null; dim: string | null; cant: number | null;
@@ -97,13 +98,13 @@ export default async function SuperPage({ searchParams }: { searchParams: Promis
           nombreSuper={nombreSuper}
           promo={promoHoy ? { porcentaje: promoHoy.porcentaje, tope: promoHoy.tope, minimo: promoHoy.minimo, medio: promoHoy.medio } : null}
           filas={filas.map(aFila)}
+          abajo={
+            <Suspense fallback={<p className="px-1 text-sm text-suave">Buscando ofertas de {nombreSuper}…</p>}>
+              <Oportunidades superId={superId} nombreSuper={nombreSuper} terminos={entradas.map((e) => e.termino)} />
+            </Suspense>
+          }
         />
         {!entradas.length && <p className="px-4 pt-2 text-center text-suave">Tu lista está vacía. Igual podés escanear lo que vas llevando.</p>}
-        <div className="px-4">
-          <Suspense fallback={<p className="px-1 text-sm text-suave">Buscando ofertas de {nombreSuper}…</p>}>
-            <Oportunidades superId={superId} nombreSuper={nombreSuper} terminos={entradas.map((e) => e.termino)} />
-          </Suspense>
-        </div>
       </div>
     </main>
   );
@@ -141,37 +142,6 @@ async function Oportunidades({ superId, nombreSuper, terminos: terms }: { superI
   const opsTuyas = oportunidades.filter(esTuyo).slice(0, 15);
   const opsOtras = oportunidades.filter((o) => !opsTuyas.includes(o)).slice(0, 20);
   if (!opsTuyas.length && !opsOtras.length) return null;
-  return (
-    <details className="rounded-2xl border border-linea bg-tarjeta">
-      <summary className="cursor-pointer px-4 py-3 text-[16px] font-bold">💡 Ofertas en {nombreSuper} ({opsTuyas.length + opsOtras.length})</summary>
-      <div className="space-y-3 px-3 pb-3">
-        <p className="px-1 text-sm text-suave">Más baratos acá que en cualquier otro súper.</p>
-        {opsTuyas.length > 0 && (<><p className="px-1 text-[15px] font-bold text-lila-tinta">De lo que solés comprar</p><ListaOps ops={opsTuyas} /></>)}
-        {opsOtras.length > 0 && (<><p className="px-1 text-[15px] font-bold text-suave">Otras</p><ListaOps ops={opsOtras} /></>)}
-      </div>
-    </details>
-  );
-}
-
-function ListaOps({ ops }: { ops: Oportunidad[] }) {
-  return (
-    <ul className="divide-y divide-linea overflow-hidden rounded-2xl border border-linea bg-tarjeta">
-      {ops.map((o) => (
-        <li key={o.producto_id} className="flex items-start gap-3 px-4 py-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-[15px] leading-snug">{o.nombre}</p>
-            <p className="text-sm text-suave">
-              {o.super_sig}: <span className="num">{pesos(o.siguiente)}</span>
-              {presentacion(o.cant, o.dim) && <> · {presentacion(o.cant, o.dim)}</>}
-              {o.promo && <span className="ml-1"><Pill tono="naranja">promo</Pill></span>}
-            </p>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className="num font-semibold">{pesos(o.precio)}</p>
-            <Pill tono="verde">−{o.ahorro}%</Pill>
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
+  const a = (o: Oportunidad): OfertaSuper => ({ producto_id: o.producto_id, nombre: o.nombre, precio: Number(o.precio), siguiente: Number(o.siguiente), super_sig: o.super_sig, ahorro: o.ahorro, promo: o.promo, pres: presentacion(o.cant, o.dim) || null });
+  return <OfertasSuper nombreSuper={nombreSuper} tuyas={opsTuyas.map(a)} otras={opsOtras.map(a)} />;
 }
