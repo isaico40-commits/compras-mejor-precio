@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { editarPrecio, borrarPrecio } from "@/app/actions";
-import { Encabezado, Tarjeta, inputCls, btnCls, btnSecCls } from "@/components/ui";
+import { Encabezado, inputCls, btnCls } from "@/components/ui";
 import { CamposMedida, CamposPrecio, medidaDe } from "@/components/FormPrecio";
 
 export default async function EditarPrecioPage({ params }: { params: Promise<{ id: string }> }) {
@@ -27,25 +27,25 @@ export default async function EditarPrecioPage({ params }: { params: Promise<{ i
         <Link href="/precios" className="pb-1 text-sm font-semibold text-marca">Volver</Link>
       </Encabezado>
       <div className="space-y-4 px-4">
-        <Tarjeta className="p-4">
+        <section className="rounded-3xl bg-tarjeta p-4 shadow-sm ring-1 ring-linea">
           <form action={editarPrecio} className="space-y-3">
             <input type="hidden" name="id" value={p.id} />
             {propio && (
               <>
                 <input type="hidden" name="producto_id" value={prod.id} />
-                <label className="block text-sm font-semibold">Producto
+                <label className="block text-sm font-semibold text-suave">Marca / producto
                   <input name="nombre" required defaultValue={prod.nombre} className={`${inputCls} mt-1`} />
                 </label>
-                <CamposMedida medida={m.medida} cant={m.cant} />
+                <CamposMedida medida={m.medida} cant={prod.cantidad != null ? m.cant : null} />
               </>
             )}
             <CamposPrecio supers={supers ?? []} superId={p.supermercado_id} precio={p.precio} promo={p.precio_promo} detalle={p.promo_detalle} fecha={p.fecha} />
             <button className={`${btnCls} w-full`}>Guardar cambios</button>
           </form>
-        </Tarjeta>
+        </section>
         <form action={borrarPrecio}>
           <input type="hidden" name="id" value={p.id} />
-          <button className={`${btnSecCls} w-full text-red-600`}>Borrar este precio</button>
+          <button className="w-full py-2 text-sm font-semibold text-red-600">Borrar este precio</button>
         </form>
         {!propio && <p className="px-1 text-sm text-suave">El nombre y la medida vienen del catálogo de los súpers y no se pueden cambiar.</p>}
       </div>

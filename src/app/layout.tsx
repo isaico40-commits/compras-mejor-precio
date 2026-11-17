@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { BottomNav } from "@/components/BottomNav";
 import { RegistrarSW } from "@/components/RegistrarSW";
+import { AbrirEnLista } from "@/components/AbrirEnLista";
 
 export const metadata: Metadata = {
   title: "Compras",
@@ -21,6 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="es">
       <body className="min-h-dvh font-sans antialiased">
         <RegistrarSW />
+        <AbrirEnLista />
         <div className="mx-auto max-w-xl pb-24">{children}</div>
         <BottomNav />
       </body>
