@@ -2,73 +2,56 @@
 
 import Link from "next/link";
 import type { Entrada } from "@/lib/lista";
-import { pesos, porUnidad, presentacion } from "@/lib/formato";
+import { pesos } from "@/lib/formato";
+import { categoriaDe } from "@/lib/categorias";
+import { Icono } from "@/components/IconoProducto";
 
-const fecha = (f: string) => { const [, m, d] = f.split("-"); return `${Number(d)}/${Number(m)}`; };
+const chip = "mt-0.5 inline-flex max-w-full items-center truncate rounded-full px-2 py-0.5 text-[12px] font-semibold";
 
+/**
+ * Una fila de la lista: ícono, nombre, un chip y un precio. El detalle (presentación, $/kg, consejos) está a un toque.
+ * Tocar el ícono = seleccionar.
+ */
 export function Fila({ e, sel, seleccionando, onToggle, onAjustar }: {
   e: Entrada; grupoId?: string; sel: boolean; seleccionando: boolean; onToggle: () => void; onAjustar?: () => void;
 }) {
   const r = e.recomendado;
+  const propio = e.rubro !== "super";
   // Anotado para un lugar, pero es más barato en otro súper
   const enOtroLado = !!(r && e.lugar && r.superId !== e.lugar.id);
-  // Etiqueta con el súper: el anotado, o el más barato
-  const tag = e.lugar?.nombre ?? (r?.super || null);
+  const cat = categoriaDe(e.titulo, e.rubro, e.categoria).id;
+  const precio = propio ? (e.ultimoPago?.precio ?? r?.precio ?? null) : r?.precio != null ? r.precio * e.cantidad : null;
+
+  const etiqueta = enOtroLado
+    ? <span className={`${chip} bg-durazno text-durazno-tinta`}>Más barato en {r!.super}</span>
+    : e.analizando ? <span className={`${chip} animate-pulse bg-fondo text-suave`}>buscando precio…</span>
+    : e.lugar ? <span className={`${chip} bg-durazno text-durazno-tinta`}>{e.lugar.nombre}</span>
+    : r?.super && !propio ? <span className={`${chip} bg-cielo text-cielo-tinta`}>{r.super}</span>
+    : propio && e.ultimoPago?.lugar ? <span className={`${chip} bg-fondo text-suave`}>{e.ultimoPago.lugar}</span>
+    : null;
+
   return (
-    <li className={`flex items-start gap-3 px-3 py-3 ${sel ? "bg-marca-suave/60" : ""}`}>
-      <button onClick={onToggle} aria-label={sel ? "Quitar de la selección" : "Seleccionar"} className="pt-0.5">
-        <span className={`flex h-7 w-7 items-center justify-center rounded-full border-2 ${sel ? "border-marca bg-marca text-white" : "border-linea"}`}>
-          {sel ? <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="3"><path d="m5 12 5 5 9-10" /></svg>
-            : e.origen === "setto" ? <span className="text-[10px] font-bold text-suave">S</span> : null}
-        </span>
+    <li className={`flex items-center gap-3 px-3 py-2.5 transition-colors ${sel ? "bg-marca-suave/60" : ""}`}>
+      <button onClick={onToggle} aria-label={sel ? "Quitar de la selección" : "Seleccionar"} className="active:scale-95">
+        <Icono nombre={e.titulo} cat={cat} setto={e.origen === "setto"}
+          marca={sel ? "sel" : enOtroLado ? "caro" : e.urgente ? "urgente" : e.cantidad} />
       </button>
-      <Link href={`/item/${e.origen}/${e.itemId}`} onClick={(ev) => { if (seleccionando) { ev.preventDefault(); onToggle(); } }} className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-2">
-          <p className="font-semibold leading-snug">
-            {e.urgente && <span className="text-alerta">● </span>}
-            {e.cantidad > 1 && <span className="num text-suave">{e.cantidad}× </span>}
+      <Link href={`/item/${e.origen}/${e.itemId}`} onClick={(ev) => { if (seleccionando) { ev.preventDefault(); onToggle(); } }}
+        className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[16px] font-semibold">
             {e.titulo}
             {e.cantidadTexto && <span className="font-normal text-suave"> · {e.cantidadTexto}</span>}
-            {tag && (
-              <span className={`ml-2 inline-flex max-w-40 items-center truncate rounded-full px-2 py-0.5 align-middle text-[12px] font-semibold ${e.lugar ? "bg-durazno text-durazno-tinta" : "bg-cielo text-cielo-tinta"}`}>
-                {tag}
-              </span>
-            )}
-          </p>
-          {r?.precio != null && !enOtroLado && (
-            <span className="shrink-0 text-right">
-              <span className="num block font-semibold">{pesos(r.precio * e.cantidad)}</span>
-              <span className="num block text-sm text-suave">
-                {e.cantidad > 1 ? `${e.cantidad} × ${pesos(r.precio)}` : porUnidad(r.porUnidad, r.dim)}
-              </span>
-            </span>
-          )}
-        </div>
-        {e.rubro !== "super" ? (
-          <p className="mt-0.5 line-clamp-1 text-sm text-suave">
-            {e.ultimoPago
-              ? <>Última vez <span className="num">{e.ultimoPago.precio != null ? pesos(e.ultimoPago.precio) : "sin precio"}</span> · {fecha(e.ultimoPago.fecha)}{e.ultimoPago.lugar ? ` · ${e.ultimoPago.lugar}` : ""}</>
-              : r ? "Precio que cargaste" : "Sin precio: se guarda cuando lo marcás comprado"}
-          </p>
-        ) : r ? (
-          <p className="mt-0.5 line-clamp-1 text-sm text-suave">
-            {r.nombre !== e.titulo ? r.nombre : ""}
-            {presentacion(r.cant, r.dim) && <> · {presentacion(r.cant, r.dim)}</>}
-            {(enOtroLado || e.cantidad > 1) && r.porUnidad != null && <> · <span className="num">{porUnidad(r.porUnidad, r.dim)}</span></>}
-          </p>
-        ) : (
-          <p className="mt-0.5 text-sm text-suave">
-            {e.analizando ? "Analizando precios…" : e.lugar ? "Sin precio cargado" : "No encontré precios. Tocá para ajustar"}
-          </p>
-        )}
-        {enOtroLado && r && (
-          <p className="mt-1 text-sm text-alerta">Más barato en {r.super}: <span className="num">{pesos(r.precio)}</span></p>
-        )}
-        {e.consejo && <p className="mt-1 text-sm text-marca">💡 {e.consejo}</p>}
+          </span>
+          {etiqueta}
+        </span>
+        <span className={`num shrink-0 text-[16px] font-bold ${propio || precio == null ? "text-suave" : ""}`}>
+          {precio != null ? pesos(precio) : "—"}
+        </span>
       </Link>
       {onAjustar && !seleccionando && (
-        <button onClick={onAjustar} aria-label="Cambiar categoría o precio" className="-mr-1 mt-0.5 shrink-0 rounded-full p-1.5 text-suave active:bg-fondo">
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></svg>
+        <button onClick={onAjustar} aria-label="Cambiar categoría o precio" className="-mr-1 shrink-0 rounded-full p-1.5 text-suave/70 active:bg-fondo">
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></svg>
         </button>
       )}
     </li>
