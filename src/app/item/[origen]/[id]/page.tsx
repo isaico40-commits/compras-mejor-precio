@@ -8,7 +8,7 @@ import { guardarItem, borrarItem, pasarASetto, guardarSetto, guardarHabitual, pr
 import { CATEGORIAS, categoriaDe } from "@/lib/categorias";
 import { detectarRubro, esRubro, nombreRubro, type Rubro } from "@/lib/rubros";
 import { claveCompra } from "@/lib/lista";
-import { Encabezado, Pill, Tarjeta, Titulo, ayudaCls, inputCls, btnCls, btnSecCls, btnSobre } from "@/components/ui";
+import { Encabezado, Pill, Tarjeta, Titulo, ayudaCls, inputCls, btnCls, btnSecCls } from "@/components/ui";
 import type { Opcion } from "@/lib/lista";
 import { NuevoLugar } from "@/components/FormPrecio";
 
@@ -279,169 +279,142 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
         <details className="group rounded-3xl bg-tarjeta shadow-sm ring-1 ring-linea">
           <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3.5 text-[15px] font-bold">
             Más opciones
-            <span className="text-[13px] font-medium text-suave group-open:hidden">nombre, categoría, búsqueda, aviso, cantidad…</span>
+            <span className="text-[13px] font-medium text-suave group-open:hidden">búsqueda, aviso, cantidad…</span>
           </summary>
-          <div className="space-y-4 border-t border-linea p-3">
-        <Tarjeta className="p-4">
-          <form action={guardar} className="space-y-2">
-            {ocultos}
-            <Titulo>Nombre</Titulo>
-            <div className="flex gap-2">
+          <div className="divide-y divide-linea border-t border-linea">
+          <Bloque emoji="📝" titulo="Nombre en tu lista" ayuda={!esMio ? "Solo cambia acá. En la caja de Setto sigue como lo escribiste." : null}>
+            <form action={guardar} className="flex gap-2">
+              {ocultos}
               <input name="nombre" defaultValue={titulo} className={inputCls} />
               <button className={btnSecCls}>Guardar</button>
-            </div>
-            {!esMio && <p className={ayudaCls}>Solo cambia acá. En la caja de Setto sigue como lo escribiste.</p>}
-          </form>
-        </Tarjeta>
-        <Tarjeta tono="lila" className="p-4">
-          <form action={guardarCategoria} className="space-y-2">
-            <input type="hidden" name="id" value={id} />
-            <input type="hidden" name="origen" value={origen} />
-            {!esMio && <input type="hidden" name="texto" value={texto} />}
-            <Titulo tono="lila">Categoría</Titulo>
-            <div className="flex gap-2">
+            </form>
+          </Bloque>
+
+          {enSuper && (
+            <Bloque emoji="🔍" titulo="Qué busco en los súpers" ayuda="Si en “Comparar” aparecen cosas que no son lo tuyo, cambiá las palabras o agregá un detalle.">
+              <form action={guardar} className="space-y-2">
+                {ocultos}
+                <label className="block text-sm font-semibold text-suave">Palabras
+                  <input name="filtro_base" defaultValue={filtro.base} placeholder="Ej: arroz largo fino" className={`${inputCls} mt-1`} />
+                </label>
+                <label className="block text-sm font-semibold text-suave">Que diga también (opcional)
+                  <input name="filtro_texto" defaultValue={filtro.texto} placeholder="Ej: integral, 00000, XG" className={`${inputCls} mt-1`} />
+                </label>
+                {!rendimiento && <input type="hidden" name="filtro_hoja" value={filtro.hoja ?? ""} />}
+                {!porMetro && <input type="hidden" name="filtro_min" value={filtro.minRollo ?? ""} />}
+                {rendimiento && (
+                  <div className="flex flex-wrap gap-2">
+                    {[["", "Cualquier hoja"], ["simple", "Hoja simple"], ["doble", "Doble o triple"]].map(([v, l]) => (
+                      <label key={v} className="cursor-pointer">
+                        <input type="radio" name="filtro_hoja" value={v} defaultChecked={(filtro.hoja ?? "") === v} className="peer sr-only" />
+                        <span className="block rounded-full bg-fondo px-3 py-1.5 text-sm font-semibold ring-1 ring-linea peer-checked:bg-marca peer-checked:text-white">{l}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {porMetro && (
+                  <label className="block text-sm font-semibold text-suave">Metros mínimos por rollo
+                    <input name="filtro_min" type="number" inputMode="numeric" min="0" max="500" defaultValue={filtro.minRollo ?? ""} placeholder="Sin mínimo" className={`${inputCls} mt-1`} />
+                  </label>
+                )}
+                <button className={`${btnSecCls} w-full`}>Buscar</button>
+              </form>
+            </Bloque>
+          )}
+
+          {enSuper && (
+            <Bloque emoji="🔔" titulo="Avisame si baja de" ayuda="Te aviso cuando el más barato quede por debajo de este precio.">
+              <form action={guardar} className="flex gap-2">
+                {ocultos}
+                <input name="precio_alerta" type="number" inputMode="decimal" min="0" step="any" defaultValue={precioAlerta ?? ""} placeholder="$ (vacío = sin aviso)" className={`${inputCls} num`} />
+                <button className={btnSecCls}>Guardar</button>
+              </form>
+            </Bloque>
+          )}
+
+          {enSuper && lugarActual && (
+            <Bloque emoji="📍" titulo={`Fijado en ${lugares?.find((l) => l.id === lugarActual)?.nombre ?? "un lugar"}`} ayuda="Si lo soltás, la lista te lo pone en el súper donde esté más barato.">
+              <form action={guardar}>
+                {ocultos}
+                <input type="hidden" name="lugar_id" value="" />
+                <button className={`${btnSecCls} w-full`}>Soltar: donde esté más barato</button>
+              </form>
+            </Bloque>
+          )}
+
+          {!enSuper && (
+            <Bloque emoji="🏪" titulo={`Tu ${rubro === "otro" ? "comercio" : nombreRubro(rubro).toLowerCase()} de siempre`} ayuda={`Todo lo de ${nombreRubro(rubro).toLowerCase()} va a ese lugar en la lista.`}>
+              <form action={guardarHabitual} className="space-y-2">
+                <input type="hidden" name="rubro" value={rubro} />
+                <input type="hidden" name="volver_a" value={volverA} />
+                <div className="flex gap-2">
+                  <select name="lugar_id" defaultValue={habitualId} className={inputCls} aria-label="Lugar de siempre">
+                    <option value="">Ninguno en particular</option>
+                    {lugares?.map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
+                  </select>
+                  <button className={btnSecCls}>Guardar</button>
+                </div>
+                <details><summary className="cursor-pointer text-sm font-semibold text-marca">¿No está el lugar?</summary><div className="mt-2"><NuevoLugar /></div></details>
+              </form>
+            </Bloque>
+          )}
+
+          {esMio && (
+            <Bloque emoji="🔁" titulo="Cuántos y cada cuánto" ayuda="Si ponés días, cuando lo marcás comprado vuelve solo a la lista pasado ese tiempo.">
+              <form action={guardarItem} className="space-y-2">
+                <input type="hidden" name="id" value={id} />
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="text-sm font-semibold text-suave">Cuántos llevo
+                    <input name="cantidad" type="number" step="any" min="0.01" inputMode="decimal" defaultValue={cantidad} className={`${inputCls} num mt-1`} />
+                  </label>
+                  <label className="text-sm font-semibold text-suave">Volver cada (días)
+                    <input name="frecuencia_dias" type="number" min="1" inputMode="numeric" defaultValue={frecuencia ?? ""} placeholder="No" className={`${inputCls} num mt-1`} />
+                  </label>
+                </div>
+                <button className={`${btnSecCls} w-full`}>Guardar</button>
+              </form>
+            </Bloque>
+          )}
+
+          <Bloque emoji="🗂️" titulo="Categoría" ayuda={enSuper ? null : "No se compara con los súpers: te muestro lo que pagaste."}>
+            <form action={guardarCategoria} className="flex gap-2">
+              <input type="hidden" name="id" value={id} />
+              <input type="hidden" name="origen" value={origen} />
+              {!esMio && <input type="hidden" name="texto" value={texto} />}
               <select name="categoria" defaultValue={categoriaElegida ?? ""} className={inputCls}>
                 <option value="">Automática ({categoriaAuto.nombre})</option>
                 {CATEGORIAS.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </select>
-              <button className={btnSobre("lila")}>Guardar</button>
+              <button className={btnSecCls}>Guardar</button>
+            </form>
+          </Bloque>
+
+          {esMio ? (
+            <div className="space-y-1 pt-1">
+              <form action={pasarASetto}>
+                <input type="hidden" name="id" value={id} />
+                <button className="w-full rounded-xl bg-lila py-2.5 text-[15px] font-semibold text-lila-tinta">Es de Setto: pasarlo a su lista</button>
+              </form>
+              <form action={borrarItem}>
+                <input type="hidden" name="id" value={id} />
+                <button className="w-full py-2 text-sm font-semibold text-red-600">Quitar de la lista</button>
+              </form>
             </div>
-            <p className={ayudaCls}>{enSuper ? "Se compara con los precios de los súpers." : "No se compara con los súpers: te muestro lo último que pagaste."}</p>
-          </form>
-        </Tarjeta>
-
-        {enSuper && (
-          <Tarjeta tono="durazno" className="p-4">
-            <form action={guardar} className="space-y-2">
-              {ocultos}
-              <Titulo tono="durazno">Avisame si baja de</Titulo>
-              <div className="flex gap-2">
-                <input name="precio_alerta" type="number" inputMode="decimal" min="0" step="any" defaultValue={precioAlerta ?? ""} placeholder="$ (vacío = sin tope)" className={inputCls} />
-                <button className={btnSobre("durazno")}>Guardar</button>
-              </div>
-              <p className={ayudaCls}>Te lo marco arriba de la lista cuando el mejor precio{opciones[0] ? ` (hoy ${pesos(opciones[0].precio)})` : ""} quede por debajo. También te aviso solo cuando está en su precio más bajo del mes.</p>
-            </form>
-          </Tarjeta>
-        )}
-
-        {enSuper && <Tarjeta className="p-4">
-          <form action={guardar} className="space-y-2">
-            {ocultos}
-            <Titulo>Buscar como</Titulo>
-            <input type="hidden" name="filtro_hoja" value={filtro.hoja ?? ""} />
-            <input type="hidden" name="filtro_min" value={filtro.minRollo ?? ""} />
-            <input type="hidden" name="filtro_texto" value={filtro.texto} />
-            <div className="flex gap-2">
-              <input name="filtro_base" defaultValue={filtro.base} className={inputCls} />
-              <button className={btnSecCls}>Buscar</button>
-            </div>
-            <p className={ayudaCls}>Usá palabras genéricas: “azucar comun”, “leche entera”, “crema de leche”.</p>
-          </form>
-        </Tarjeta>}
-
-        {enSuper && !productoId && (
-          <Tarjeta tono="limon" className="p-4">
-            <form action={guardar} className="space-y-3">
-              {ocultos}
-              <input type="hidden" name="filtro_base" value={filtro.base} />
-              <Titulo tono="limon">Cualquier marca: comparo por {palabraDim(porMetro ? "m" : porPano ? "p" : dim ?? opciones[0]?.dim)}</Titulo>
-              <p className={ayudaCls}>
-                {porMetro ? "Leo rollos × metros de cada paquete" : porPano ? "Leo los paños de cada paquete" : "Leo el tamaño de cada paquete (kilos, litros o unidades del pack)"} y te muestro el que sale menos{hayDescuento ? ", con el descuento de hoy" : ""}.
-              </p>
-              {!rendimiento && <input type="hidden" name="filtro_hoja" value={filtro.hoja ?? ""} />}
-              {rendimiento && <fieldset>
-                <legend className="mb-1 text-sm font-semibold text-limon-tinta">Hoja</legend>
-                <div className="flex flex-wrap gap-2">
-                  {[["", "Cualquiera"], ["simple", "Simple"], ["doble", "Doble o triple"]].map(([v, l]) => (
-                    <label key={v} className="cursor-pointer">
-                      <input type="radio" name="filtro_hoja" value={v} defaultChecked={(filtro.hoja ?? "") === v} className="peer sr-only" />
-                      <span className="block rounded-full bg-tarjeta px-3 py-1.5 text-sm font-semibold text-limon-tinta ring-1 ring-limon-tinta/20 peer-checked:bg-limon-tinta peer-checked:text-white">{l}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>}
-              {porMetro && <label className="block text-sm font-semibold text-limon-tinta">Metros mínimos por rollo
-                <input name="filtro_min" type="number" inputMode="numeric" min="0" max="500" defaultValue={filtro.minRollo ?? ""} placeholder="Sin mínimo (ej. 30)" className={`${inputCls} mt-1`} />
-              </label>}
-              <label className="block text-sm font-semibold text-limon-tinta">Solo los que digan
-                <input name="filtro_texto" defaultValue={filtro.texto} placeholder="Ej.: XG · 60x90 · AA (separá con coma)" className={`${inputCls} mt-1`} />
-              </label>
-              <button className={`${btnSobre("limon")} w-full`}>Aplicar</button>
-            </form>
-          </Tarjeta>
-        )}
-
-        {!enSuper && (
-          <Tarjeta tono="cielo" className="p-4">
-            <form action={guardarHabitual} className="space-y-2">
-              <input type="hidden" name="rubro" value={rubro} />
-              <input type="hidden" name="volver_a" value={`/item/${origen}/${id}`} />
-              <Titulo tono="cielo">Tu {rubro === "otro" ? "comercio" : nombreRubro(rubro).toLowerCase()} de siempre</Titulo>
-              <p className={ayudaCls}>Solo el lugar. El precio va en “Lo que pagaste”.</p>
-              <label className="block">
-                <select name="lugar_id" defaultValue={habitualId} className={inputCls} aria-label="Lugar de siempre">
-                  <option value="">Ninguna en particular</option>
-                  {lugares?.map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
-                </select>
-              </label>
-              <NuevoLugar />
-              <button className={`${btnSobre("cielo")} w-full`}>Guardar lugar</button>
-              <p className={ayudaCls}>Todo lo de {nombreRubro(rubro).toLowerCase()} va a ese lugar en la lista, salvo lo que anotes en otro.</p>
-            </form>
-          </Tarjeta>
-        )}
-        {esMio && (
-          <Tarjeta tono="cielo" className="p-4">
-            <form action={guardarItem} className="space-y-3">
-              <input type="hidden" name="id" value={id} />
-              <input type="hidden" name="volver" value="1" />
-              <div className="grid grid-cols-2 gap-3">
-                <label className="text-[15px] font-bold text-cielo-tinta">Cantidad
-                  <input name="cantidad" type="number" step="any" min="0.01" defaultValue={cantidad} className={`${inputCls} mt-1`} />
-                </label>
-                <label className="text-[15px] font-bold text-cielo-tinta">Cada cuántos días
-                  <input name="frecuencia_dias" type="number" min="1" defaultValue={frecuencia ?? ""} placeholder="—" className={`${inputCls} mt-1`} />
-                </label>
-              </div>
-              <label className="block text-[15px] font-bold text-cielo-tinta">Dónde lo comprás
-                <select name="lugar_id" defaultValue={lugarId ?? ""} className={`${inputCls} mt-1`}>
-                  <option value="">{enSuper ? "Donde esté más barato" : "Donde compro siempre"}</option>
-                  {lugares?.map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
-                </select>
-              </label>
-              <NuevoLugar />
-              <button className={`${btnCls} w-full`}>Guardar</button>
-            </form>
-            <form action={pasarASetto} className="mt-3">
-              <input type="hidden" name="id" value={id} />
-              <button className={`${btnSecCls} w-full`}>Es de Setto: pasarlo a la lista de Setto</button>
-            </form>
-            <form action={borrarItem} className="mt-1">
-              <input type="hidden" name="id" value={id} />
-              <button className="w-full py-2 text-sm font-semibold text-red-600">Quitar de la lista</button>
-            </form>
-          </Tarjeta>
-        )}
-        {!esMio && (
-          <Tarjeta tono="cielo" className="p-4">
-            <form action={guardarSetto} className="space-y-3">
-              {ocultos}
-              <input type="hidden" name="volver" value="1" />
-              <label className="block text-[15px] font-bold text-cielo-tinta">Dónde lo comprás
-                <select name="lugar_id" defaultValue={lugarSetto ?? ""} className={`${inputCls} mt-1`}>
-                  <option value="">{enSuper ? "Donde esté más barato" : "Donde compro siempre"}</option>
-                  {lugares?.map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
-                </select>
-              </label>
-              <NuevoLugar />
-              <button className={`${btnCls} w-full`}>Guardar</button>
-            </form>
-          </Tarjeta>
-        )}
-        {!esMio && <p className="px-1 text-sm text-suave">Este ítem vive en la caja de Setto: si lo marcás comprado o lo quitás desde la lista, se actualiza allá también.</p>}
+          ) : <p className="px-1 text-sm text-suave">Vive en la caja de Setto: si lo marcás comprado o lo quitás, se actualiza allá también.</p>}
           </div>
         </details>
       </div>
     </main>
+  );
+}
+
+/** Un ajuste dentro de "Más opciones": título con ícono, el campo y una línea que explica para qué sirve. */
+function Bloque({ emoji, titulo, ayuda, children }: { emoji: string; titulo: string; ayuda?: string | null; children: React.ReactNode }) {
+  return (
+    <div className="space-y-2 px-4 py-4">
+      <p className="text-[15px] font-bold"><span className="mr-1.5">{emoji}</span>{titulo}</p>
+      {children}
+      {ayuda && <p className={ayudaCls}>{ayuda}</p>}
+    </div>
   );
 }
