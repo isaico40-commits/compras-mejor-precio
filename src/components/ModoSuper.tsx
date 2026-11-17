@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CATEGORIAS, categoriaDe } from "@/lib/categorias";
+import { Icono } from "@/components/IconoProducto";
 import { escanear, precioGondola, productoNuevoEan, terminarCompra, terminarEscaneo, type Escaneo } from "@/app/actions";
 
 export type PromoHoy = { porcentaje: number; tope: number | null; minimo: number | null; medio: string };
@@ -23,12 +23,6 @@ type EnCarro = {
   id: string; rowKey: string | null; productoId: string | null; nombre: string;
   precio: number | null; cantidad: number; deMas: number; aviso: string | null; escaneado: boolean; cat?: string | null;
 };
-
-const EMOJI: Record<string, string> = {
-  verduleria: "🥬", lacteos: "🥛", almacen: "🥫", dietetica: "🌰", bebidas: "🥤", carniceria: "🥩", fiambres: "🥓", panaderia: "🥖",
-  congelados: "🧊", descartables: "📦", limpieza: "🧽", higiene: "🧴", bazar: "🍽️", mascotas: "🐾", otro_comercio: "🏪", otros: "🛒",
-};
-const FONDO: Record<string, string> = { menta: "bg-menta", cielo: "bg-cielo", lila: "bg-lila", durazno: "bg-durazno", limon: "bg-limon" };
 
 type Pendiente =
   | { tipo: "precio"; ean: string; r: NonNullable<Escaneo> }
@@ -197,25 +191,8 @@ export function ModoSuper({ superId, nombreSuper, promo, filas }: { superId: str
   }
 
   // ---------- Vista ----------
-  const iconoDe = (nombre: string, cat?: string | null) => {
-    const c = cat ? CATEGORIAS.find((x) => x.id === cat) : categoriaDe(nombre, "super");
-    return { emoji: EMOJI[c?.id ?? "otros"] ?? "🛒", bg: FONDO[c?.tono ?? "limon"] };
-  };
   const nProductos = carro.reduce((t, c) => t + c.cantidad, 0);
   const R = 26, CIRC = 2 * Math.PI * R;
-
-  const Icono = ({ nombre, cat, marca }: { nombre: string; cat?: string | null; marca?: "ok" | "caro" | "urgente" | number }) => {
-    const i = iconoDe(nombre, cat);
-    return (
-      <span className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-[22px] ${i.bg}`}>
-        {i.emoji}
-        {marca === "ok" && <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-marca text-[11px] text-white ring-2 ring-tarjeta">✓</span>}
-        {marca === "caro" && <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#e8833a] text-[12px] font-bold text-white ring-2 ring-tarjeta">!</span>}
-        {marca === "urgente" && <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full bg-alerta ring-2 ring-tarjeta" />}
-        {typeof marca === "number" && marca > 1 && <span className="num absolute -right-1.5 -top-1.5 rounded-full bg-tinta px-1.5 text-[11px] font-bold leading-5 text-white ring-2 ring-tarjeta">×{marca}</span>}
-      </span>
-    );
-  };
 
   const Fila = ({ f }: { f: FilaLista }) => (
     <li>

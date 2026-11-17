@@ -4,11 +4,16 @@ import { tituloCategoria } from "@/lib/categorias";
  * Convierte texto libre (una nota, un dictado) en ítems de la lista.
  * "Azúcar, leche y yerba" / "- harina\n- 2 cremas\n☐ manteca" -> ["Azúcar", "leche", "yerba"] / ["harina", "2 cremas", "manteca"]
  */
+// Título de la nota compartida ("Lista de compras", "Súper"): no es un ítem
+const TITULO_NOTA = /^(mi )?(lista( de)?( (las )?compras| (del )?s[uú]per(mercado)?)?|compras|s[uú]per(mercado)?)$/i;
+
 export function parsearItems(texto: string | null | undefined): string[] {
   if (!texto) return [];
   const partes = texto
     .replace(/https?:\/\/\S+/g, " ")               // links compartidos
     .split(/\r?\n|,|;|\s+y\s+|\s+e\s+|\s+más\s+|\s+mas\s+/i)
+    // Lo ya tildado en la nota (☑ / [x]) no se importa
+    .map((p) => (/^[\s\-–•*·]*(☑|✓|✔|✅|\[[xX]\])/.test(p) ? "" : p))
     .map((p) => p
       .replace(/^[\s\-–•*·☐☑✓✔▢□■●>]+/, "")       // viñetas y casillas
       .replace(/^\[\s?[xX]?\s?\]\s*/, "")           // [ ] y [x]
@@ -16,7 +21,7 @@ export function parsearItems(texto: string | null | undefined): string[] {
       .replace(/\s+/g, " ")
       .replace(/[.!]+$/, "")
       .trim())
-    .filter((p) => p.length > 1 && p.length < 80);
+    .filter((p) => p.length > 1 && p.length < 80 && !TITULO_NOTA.test(p));
   const vistos = new Set<string>();
   return partes.filter((p) => { const k = p.toLowerCase(); if (vistos.has(k)) return false; vistos.add(k); return true; })
     .map((p) => p.charAt(0).toUpperCase() + p.slice(1))

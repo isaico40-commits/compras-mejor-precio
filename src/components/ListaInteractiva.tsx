@@ -8,11 +8,7 @@ import { ConfirmarCompra, type ParaConfirmar } from "@/components/ConfirmarCompr
 import { quitarItems, lugarItems, categoriaItems, pasarACasa, type ItemLote } from "@/app/actions";
 import { CATEGORIAS, categoriaDe } from "@/lib/categorias";
 import { AjusteRapido } from "@/components/AjusteRapido";
-import { tintaTono, type Tono } from "@/components/ui";
-
-// Color del grupo: el de su categoría
-const tonoGrupo = (g: Grupo): Tono | null => g.tono ?? null;
-const fondo: Record<Tono, string> = { blanco: "bg-tarjeta", menta: "bg-menta", cielo: "bg-cielo", lila: "bg-lila", durazno: "bg-durazno", limon: "bg-limon" };
+import { EMOJI, FONDO } from "@/components/IconoProducto";
 
 const fmt = (n: number) => "$" + Math.round(n).toLocaleString("es-AR");
 
@@ -51,25 +47,26 @@ export function ListaInteractiva({ grupos, supers }: { grupos: Grupo[]; supers: 
     <>
       {aviso && <p className="mt-3 rounded-xl bg-marca-suave p-3 text-sm text-marca" onClick={() => setAviso(null)}>{aviso}</p>}
 
-      <div className="mt-5 space-y-4">
+      <div className="mt-5 space-y-5">
         {grupos.map((g) => (
-          <section key={g.id} className="overflow-hidden rounded-2xl border border-linea bg-tarjeta">
-            <div className={`flex items-baseline justify-between px-3 py-2.5 ${(() => { const t = tonoGrupo(g); return t ? `${fondo[t]} ${tintaTono[t]}` : "bg-fondo text-suave"; })()}`}>
-              <h2 className="text-lg font-bold">
+          <section key={g.id}>
+            <div className="mb-1.5 flex items-center justify-between px-1">
+              <h2 className="flex items-center gap-2 text-[17px] font-bold">
+                <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-[15px] ${FONDO[g.tono ?? "limon"]}`}>{EMOJI[g.id.replace(/^cat-/, "")] ?? "🛒"}</span>
                 {g.nombre}
-                {g.anotado && <span className="ml-2 inline-flex items-center rounded-full bg-white/70 px-2 py-0.5 align-middle text-[11px] font-semibold">anotado</span>}
+                <span className="text-[13px] font-medium text-suave">{g.entradas.length}</span>
               </h2>
-              <span className="flex items-baseline gap-3">
-                {g.total > 0 && <span className="num text-[15px] font-bold">{fmt(g.total)}</span>}
+              <span className="flex items-center gap-3">
+                {g.total > 0 && <span className="num text-[14px] font-semibold text-suave">{fmt(g.total)}</span>}
                 <button
                   onClick={() => { const s = new Set(sel); const todos = g.entradas.every((e) => s.has(e.key)); g.entradas.forEach((e) => (todos ? s.delete(e.key) : s.add(e.key))); setSel(s); }}
-                  className="text-sm font-semibold underline-offset-2 opacity-80"
+                  className={`rounded-full px-2.5 py-1 text-[12px] font-semibold ${g.entradas.every((e) => sel.has(e.key)) ? "bg-marca text-white" : "bg-tarjeta text-suave ring-1 ring-linea"}`}
                 >
-                  {g.entradas.every((e) => sel.has(e.key)) ? "Ninguno" : "Todos"}
+                  {g.entradas.every((e) => sel.has(e.key)) ? "✓ Todos" : "Todos"}
                 </button>
               </span>
             </div>
-            <ul className="divide-y divide-linea">
+            <ul className="divide-y divide-linea overflow-hidden rounded-3xl bg-tarjeta shadow-sm ring-1 ring-linea">
               {g.entradas.map((e) => (
                 <Fila key={e.key} e={e} grupoId={g.id} sel={sel.has(e.key)} seleccionando={sel.size > 0} onToggle={() => toggle(e.key)} onAjustar={() => setAjuste(e)} />
               ))}

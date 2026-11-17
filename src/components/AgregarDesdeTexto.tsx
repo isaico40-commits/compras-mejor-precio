@@ -14,13 +14,13 @@ const nombreCat = (id: string | null) => CATEGORIAS.find((c) => c.id === id)?.no
 export function AgregarDesdeTexto({ inicial, auto, voz, destinoInicial = "casa" }: { inicial: ItemParseado[]; auto: boolean; voz: boolean; destinoInicial?: "casa" | "setto" }) {
   const [destino, setDestino] = useState<"casa" | "setto">(destinoInicial);
   const [items, setItems] = useState<{ t: string; cat: string | null; on: boolean }[]>(inicial.map((i) => ({ t: i.nombre, cat: i.categoria, on: true })));
-  const [hecho, setHecho] = useState<string[] | null>(null);
+  const [hecho, setHecho] = useState<{ nuevos: string[]; ya: number } | null>(null);
   const [pendiente, start] = useTransition();
 
   const agregar = (lista: ItemParseado[]) => start(async () => {
     if (!lista.length) return;
-    await agregarVarios(lista, destino);
-    setHecho(lista.map((i) => i.nombre));
+    const r = await agregarVarios(lista, destino);
+    setHecho({ nuevos: r.resultados.filter((x) => x.estado !== "ya_estaba").map((x) => x.nombre), ya: r.resultados.filter((x) => x.estado === "ya_estaba").length });
   });
 
   useEffect(() => {
@@ -38,8 +38,11 @@ export function AgregarDesdeTexto({ inicial, auto, voz, destinoInicial = "casa" 
     return (
       <div className="space-y-4 text-center">
         <p className="text-4xl">✅</p>
-        <p className="text-lg font-bold">Agregado {destino === "setto" ? "a la caja de Setto" : "a tu lista"}</p>
-        <p className="text-suave">{hecho.join(", ")}</p>
+        <p className="text-lg font-bold">
+          {hecho.nuevos.length ? `${hecho.nuevos.length} ${hecho.nuevos.length === 1 ? "nuevo" : "nuevos"} ${destino === "setto" ? "en la caja de Setto" : "en tu lista"}` : "Nada nuevo"}
+        </p>
+        {hecho.nuevos.length > 0 && <p className="text-suave">{hecho.nuevos.join(", ")}</p>}
+        {hecho.ya > 0 && <p className="text-sm text-suave">{hecho.ya} ya {hecho.ya === 1 ? "estaba" : "estaban"} en la lista, no se duplicaron.</p>}
         <div className="flex gap-2">
           <button onClick={() => { setHecho(null); setItems([]); }} className="flex-1 rounded-xl border border-linea bg-tarjeta py-3 font-semibold">Dictar más</button>
           <Link href="/" className="flex-1 rounded-xl bg-marca py-3 font-semibold text-white">Ver la lista</Link>
