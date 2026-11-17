@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Icono } from "@/components/IconoProducto";
+import { Icono, EMOJI, FONDO } from "@/components/IconoProducto";
+import { CATEGORIAS } from "@/lib/categorias";
 import { EVENTO_OFERTA, type OfertaSuper } from "@/components/OfertasSuper";
 import { escanear, precioGondola, productoNuevoEan, terminarCompra, terminarEscaneo, type Escaneo } from "@/app/actions";
 
@@ -95,6 +96,8 @@ export function ModoSuper({ superId, nombreSuper, promo, filas, abajo }: { super
   const porComprar = filas.filter((f) => !enCarro.has(f.key));
   const aca = porComprar.filter((f) => f.conviene);
   const otro = porComprar.filter((f) => !f.conviene);
+  // Lista completa: todo lo que falta, agrupado por categoría (en el orden de siempre)
+  const porCategoria = CATEGORIAS.map((cat) => ({ cat, filas: porComprar.filter((f) => f.cat === cat.id) })).filter((g) => g.filas.length);
 
   // Tocar un ítem de la lista = lo pusiste en el carrito y el precio estaba bien
   const meter = (f: FilaLista) => {
@@ -339,19 +342,35 @@ export function ModoSuper({ superId, nombreSuper, promo, filas, abajo }: { super
           <ul className="divide-y divide-linea overflow-hidden rounded-3xl bg-tarjeta shadow-sm ring-1 ring-linea">{aca.map((f) => <Fila key={f.key} f={f} />)}</ul>
         </section>
       )}
-      {/* Abajo, juntos: lo que conviene en otro lado y las ofertas de acá */}
-      {(otro.length > 0 || abajo) && (
+      {/* Abajo, juntos: la lista completa y las ofertas de acá */}
+      {(porComprar.length > 0 || abajo) && (
         <div className="space-y-2 pt-2">
-        {otro.length > 0 && (
+        {porComprar.length > 0 && (
           <section>
-            <button onClick={() => setVerOtroLado(!verOtroLado)} className="flex w-full items-center justify-between rounded-2xl bg-durazno px-4 py-3 text-left">
-              <span className="text-[15px] font-semibold text-durazno-tinta">🔀 {otro.length} {otro.length === 1 ? "conviene" : "convienen"} en otro súper</span>
-              <span className={`text-durazno-tinta transition-transform ${verOtroLado ? "rotate-180" : ""}`}>▾</span>
+            <button onClick={() => setVerOtroLado(!verOtroLado)} className="flex w-full items-center justify-between rounded-2xl bg-cielo px-4 py-3 text-left">
+              <span className="text-[15px] font-semibold text-cielo-tinta">
+                📋 Lista completa ({porComprar.length})
+                {otro.length > 0 && <span className="block text-[12px] font-medium opacity-80">{otro.length} sale{otro.length === 1 ? "" : "n"} menos en otro súper</span>}
+              </span>
+              <span className={`text-cielo-tinta transition-transform ${verOtroLado ? "rotate-180" : ""}`}>▾</span>
             </button>
-            {verOtroLado && <ul className="mt-2 divide-y divide-linea overflow-hidden rounded-3xl bg-tarjeta shadow-sm ring-1 ring-linea">{otro.map((f) => <Fila key={f.key} f={f} />)}</ul>}
+            {verOtroLado && (
+              <div className="mt-2 space-y-3">
+                <p className="px-1 text-[13px] text-suave">Todo lo que te falta, por categoría. Tocá lo que agarres, aunque en otro lado salga un poco menos.</p>
+                {porCategoria.map(({ cat, filas: fs }) => (
+                  <div key={cat.id}>
+                    <p className="mb-1.5 flex items-center gap-2 px-1 text-[15px] font-bold">
+                      <span className={`flex h-6 w-6 items-center justify-center rounded-lg text-[13px] ${FONDO[cat.tono]}`}>{EMOJI[cat.id] ?? "🛒"}</span>
+                      {cat.nombre}
+                      <span className="text-[12px] font-medium text-suave">{fs.length}</span>
+                    </p>
+                    <ul className="divide-y divide-linea overflow-hidden rounded-3xl bg-tarjeta shadow-sm ring-1 ring-linea">{fs.map((f) => <Fila key={f.key} f={f} />)}</ul>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
-
           {abajo}
         </div>
       )}
