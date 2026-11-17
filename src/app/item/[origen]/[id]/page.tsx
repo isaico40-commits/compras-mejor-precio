@@ -172,16 +172,16 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
             </label>
             <div>
               <p className="text-sm font-semibold text-suave">Tamaño <span className="font-normal">(para comparar por kilo o litro)</span></p>
-              <div className="mt-1 flex gap-2">
-                <input name="cantidad" type="number" step="any" min="0.01" inputMode="decimal" defaultValue={tam?.cant ?? ""} placeholder="25" aria-label="Tamaño" className={`${inputCls} num w-20 shrink-0`} />
-                <div className="flex flex-1 gap-1">
-                  {[["g", "g"], ["kg", "kg"], ["ml", "ml"], ["l", "l"], ["u", "unid."]].map(([v, l]) => (
-                    <label key={v} className="flex-1 cursor-pointer">
-                      <input type="radio" name="medida" value={v} defaultChecked={tam?.medida === v} className="peer sr-only" />
-                      <span className="block rounded-xl bg-tarjeta py-2.5 text-center text-[14px] font-semibold ring-1 ring-linea peer-checked:bg-marca peer-checked:text-white peer-checked:ring-marca">{l}</span>
-                    </label>
-                  ))}
-                </div>
+              <div className="mt-1 grid grid-cols-2 gap-2">
+                <input name="cantidad" type="number" step="any" min="0.01" inputMode="decimal" defaultValue={tam?.cant ?? ""} placeholder="Ej: 500" aria-label="Tamaño" className={`${inputCls} num`} />
+                <select name="medida" defaultValue={tam && tam.medida !== "medio_kg" ? tam.medida : ""} aria-label="Unidad" className={inputCls}>
+                  <option value="">Unidad…</option>
+                  <option value="g">gramos (g)</option>
+                  <option value="kg">kilos (kg)</option>
+                  <option value="ml">mililitros (ml / cc)</option>
+                  <option value="l">litros (l)</option>
+                  <option value="u">unidades</option>
+                </select>
               </div>
             </div>
             <div className="grid grid-cols-[1fr_1.3fr] gap-2">

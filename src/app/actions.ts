@@ -324,7 +324,7 @@ export async function precioDelItem(form: FormData) {
     if (p && p.nombre.trim().toLowerCase() !== nombre.toLowerCase()) productoId = null;
   }
   // Tamaño: el elegido (25 g, 1 l…) o el que viene en el nombre ("Manzanilla 25g")
-  const medida = form.get("medida") ? leerMedida(form) : medidaDelNombre(nombre);
+  const medida = form.get("medida") && form.get("cantidad") ? leerMedida(form) : medidaDelNombre(nombre);
   if (!productoId) {
     if (!nombre) throw new Error("Poné la marca o el nombre del producto");
     const { data: existente } = await supabase.from("productos").select("id, ean").ilike("nombre", nombre).limit(1).maybeSingle();
