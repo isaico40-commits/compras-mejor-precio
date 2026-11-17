@@ -20,7 +20,7 @@ export function Fila({ e, sel, seleccionando, onToggle, onAjustar }: {
   // Anotado para un lugar, pero es más barato en otro súper
   const enOtroLado = !!(r && e.lugar && r.superId !== e.lugar.id);
   const cat = categoriaDe(e.titulo, e.rubro, e.categoria).id;
-  const precio = propio ? (e.ultimoPago?.precio ?? r?.precio ?? null) : r?.precio != null ? r.precio * e.cantidad : null;
+  const precio = propio ? (r?.precio ?? e.ultimoPago?.precio ?? null) : r?.precio != null ? r.precio * e.cantidad : null;
 
   const etiqueta = enOtroLado
     ? <span className={`${chip} bg-durazno text-durazno-tinta`}>Más barato en {r!.super}</span>

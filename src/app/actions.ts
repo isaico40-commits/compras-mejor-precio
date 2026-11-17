@@ -280,6 +280,61 @@ function leerMedida(form: FormData) {
   return { unidad: m.unidad, cantidad: cant };
 }
 
+/** Deja un ítem de la lista (tuyo o de Setto) fijado a un producto y un lugar; en Setto además anota dónde y el precio. */
+async function fijarEnItem(supabase: Awaited<ReturnType<typeof createClient>>, form: FormData, productoId: string, superId: string, precio: number | null) {
+  const [origen, itemId] = String(form.get("item") ?? "").split(":");
+  if (origen === "mio" && itemId) {
+    await supabase.from("lista_items").update({ producto_id: productoId, lugar_id: superId }).eq("id", itemId);
+  } else if (origen === "setto" && itemId) {
+    const texto = txt(form.get("texto"));
+    if (texto) {
+      const { data: actual } = await supabase.from("alias_productos").select("nombre, termino").eq("texto", texto).maybeSingle();
+      await supabase.from("alias_productos").upsert(
+        { texto, producto_id: productoId, lugar_id: superId, nombre: actual?.nombre ?? null, termino: actual?.termino ?? null },
+        { onConflict: "user_id,texto" },
+      );
+    }
+    const { data: l } = await supabase.from("supermercados").select("nombre").eq("id", superId).maybeSingle();
+    await detalleEnSetto(supabase, itemId, l?.nombre ?? null, precio);
+  }
+}
+
+/**
+ * Precio a mano desde la ficha del ítem: marca + precio + lugar, en un solo paso.
+ * Si la marca es la del producto fijado, suma un precio a ese producto; si cambiaste la marca, usa (o crea) ese producto.
+ */
+export async function precioDelItem(form: FormData) {
+  const supabase = await createClient();
+  const precio = num(form.get("precio"));
+  if (!precio || precio <= 0) throw new Error("Poné el precio");
+  const nombre = txt(form.get("nombre"));
+  let productoId = txt(form.get("producto_id"));
+  if (productoId && nombre) {
+    const { data: p } = await supabase.from("productos").select("nombre").eq("id", productoId).maybeSingle();
+    if (p && p.nombre.trim().toLowerCase() !== nombre.toLowerCase()) productoId = null;
+  }
+  if (!productoId) {
+    if (!nombre) throw new Error("Poné la marca o el nombre del producto");
+    const { data: existente } = await supabase.from("productos").select("id").ilike("nombre", nombre).limit(1).maybeSingle();
+    if (existente) productoId = existente.id as string;
+    else {
+      const { data: nuevo, error } = await supabase.from("productos").insert({ nombre, unidad: "u", cantidad: 1 }).select("id").single();
+      if (error) throw new Error(error.message);
+      productoId = nuevo.id as string;
+    }
+  }
+  const superId = await resolverLugar(supabase, form);
+  if (!superId) throw new Error("Elegí o escribí dónde lo comprás");
+  const { error } = await supabase.from("precios").insert({ producto_id: productoId, supermercado_id: superId, precio });
+  if (error) throw new Error(error.message);
+  await fijarEnItem(supabase, form, productoId!, superId, precio);
+  revalidatePath("/");
+  revalidatePath("/super");
+  revalidatePath("/precios");
+  const volver = txt(form.get("volver_a"));
+  if (volver?.startsWith("/item/")) redirect(`${volver}?ok=precio`);
+}
+
 /** Carga un precio. Si no viene producto_id, crea (o reusa) un producto propio con nombre y medida. */
 export async function guardarPrecioNuevo(form: FormData) {
   const supabase = await createClient();
@@ -311,21 +366,7 @@ export async function guardarPrecioNuevo(form: FormData) {
   if (error) throw new Error(error.message);
 
   // Si se cargó desde un ítem de la lista: queda fijado a este producto y a este lugar
-  const [origen, itemId] = String(form.get("item") ?? "").split(":");
-  if (origen === "mio" && itemId) {
-    await supabase.from("lista_items").update({ producto_id: productoId, lugar_id: superId }).eq("id", itemId);
-  } else if (origen === "setto" && itemId) {
-    const texto = txt(form.get("texto"));
-    if (texto) {
-      const { data: actual } = await supabase.from("alias_productos").select("nombre, termino").eq("texto", texto).maybeSingle();
-      await supabase.from("alias_productos").upsert(
-        { texto, producto_id: productoId, lugar_id: superId, nombre: actual?.nombre ?? null, termino: actual?.termino ?? null },
-        { onConflict: "user_id,texto" },
-      );
-    }
-    const { data: l } = await supabase.from("supermercados").select("nombre").eq("id", superId).maybeSingle();
-    await detalleEnSetto(supabase, itemId, l?.nombre ?? null, num(form.get("precio_promo")) ?? num(form.get("precio")));
-  }
+  await fijarEnItem(supabase, form, productoId!, superId, num(form.get("precio_promo")) ?? num(form.get("precio")));
   revalidatePath("/precios");
   revalidatePath("/");
   redirect("/precios?ok=1");
