@@ -4,13 +4,14 @@ import { createClient } from "@/lib/supabase/server";
 import { pendientesConAlias, limpiarItem } from "@/lib/setto";
 import { pesos, porUnidad, presentacion, palabraDim, esPorMetro, esRolloCocina, partirTermino } from "@/lib/formato";
 import { leerDescuentos, mejorDescuento, ahorroCon, textoDescuento, hoyAR } from "@/lib/descuentos";
-import { guardarItem, borrarItem, pasarASetto, guardarSetto, guardarHabitual, precioDelItem, guardarCategoria, guardarRendimiento } from "@/app/actions";
-import { CATEGORIAS, categoriaDe } from "@/lib/categorias";
+import { guardarItem, borrarItem, pasarASetto, guardarSetto, guardarHabitual, precioDelItem, guardarRendimiento } from "@/app/actions";
+import { categoriaDe } from "@/lib/categorias";
 import { detectarRubro, esRubro, nombreRubro, type Rubro } from "@/lib/rubros";
 import { claveCompra } from "@/lib/lista";
 import { Encabezado, Pill, Tarjeta, Titulo, ayudaCls, inputCls, btnCls, btnSecCls } from "@/components/ui";
 import type { Opcion } from "@/lib/lista";
-import { NuevoLugar } from "@/components/FormPrecio";
+import { NuevoLugar, medidaDe } from "@/components/FormPrecio";
+import { CategoriaRapida } from "@/components/CategoriaRapida";
 
 export default async function ItemPage({ params, searchParams }: { params: Promise<{ origen: string; id: string }>; searchParams: Promise<{ ok?: string }> }) {
   const { origen, id } = await params;
@@ -56,7 +57,7 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
   const porMetro = enSuper && esPorMetro(filtro.base || titulo);
   const porPano = enSuper && !porMetro && esRolloCocina(filtro.base || titulo);
   const rendimiento = porMetro || porPano;
-  const [{ data: ops }, { data: lugares }, { data: pagos }, { data: hab }, descuentos, { data: sinLeer }, { data: preciosFijo }] = await Promise.all([
+  const [{ data: ops }, { data: lugares }, { data: pagos }, { data: hab }, descuentos, { data: sinLeer }, { data: preciosFijo }, { data: prod }] = await Promise.all([
     enSuper ? supabase.rpc("opciones_termino2", { p_termino: termino, p_dim: dim, p_limite: 10 }) : Promise.resolve({ data: [] }),
     supabase.from("supermercados").select("id, nombre").eq("oculto", false).order("nombre"),
     enSuper ? Promise.resolve({ data: [] })
@@ -72,7 +73,9 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
       ? supabase.from("precios").select("precio, precio_promo, fecha, supermercado_id, supermercados(nombre)").eq("producto_id", productoId)
           .order("fecha", { ascending: false }).order("created_at", { ascending: false }).limit(40)
       : Promise.resolve({ data: [] }),
+    productoId ? supabase.from("productos").select("unidad, cantidad, ean").eq("id", productoId).maybeSingle() : Promise.resolve({ data: null }),
   ]);
+  const tam = prod && (prod as { ean: string | null }).ean == null ? medidaDe(Number((prod as { cantidad: number }).cantidad), (prod as { unidad: string }).unidad) : null;
   const historial = (pagos as { precio: number | null; fecha: string; supermercados: unknown }[] | null) ?? [];
   const habitualId = (hab as { lugar_id: string } | null)?.lugar_id ?? "";
   const { dia } = hoyAR();
@@ -139,6 +142,7 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
         {/* Lo principal: marca, precio y dónde */}
         <section className="overflow-hidden rounded-3xl bg-tarjeta shadow-sm ring-1 ring-linea">
           <div className="p-4">
+            <div className="mb-3"><CategoriaRapida id={id} origen={origen} texto={texto} elegida={categoriaElegida} auto={categoriaAuto.id} /></div>
             {hero ? (
               <>
                 <p className="text-[13px] font-semibold uppercase tracking-wide text-suave">{hero.etiqueta}</p>
@@ -164,8 +168,22 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
             <input type="hidden" name="volver_a" value={volverA} />
             <p className="text-[15px] font-bold">{hero ? "Cambiar precio a mano" : "Cargar precio"}</p>
             <label className="block text-sm font-semibold text-suave">Marca / producto
-              <input name="nombre" defaultValue={productoNombre ?? (enSuper ? "" : titulo)} placeholder={`Ej: ${titulo} Sedal 340 ml`} className={`${inputCls} mt-1`} />
+              <input name="nombre" defaultValue={productoNombre ?? (enSuper ? "" : titulo)} placeholder={`Ej: ${titulo} marca X`} className={`${inputCls} mt-1`} />
             </label>
+            <div>
+              <p className="text-sm font-semibold text-suave">Tamaño <span className="font-normal">(para comparar por kilo o litro)</span></p>
+              <div className="mt-1 flex gap-2">
+                <input name="cantidad" type="number" step="any" min="0.01" inputMode="decimal" defaultValue={tam?.cant ?? ""} placeholder="25" aria-label="Tamaño" className={`${inputCls} num w-20 shrink-0`} />
+                <div className="flex flex-1 gap-1">
+                  {[["g", "g"], ["kg", "kg"], ["ml", "ml"], ["l", "l"], ["u", "unid."]].map(([v, l]) => (
+                    <label key={v} className="flex-1 cursor-pointer">
+                      <input type="radio" name="medida" value={v} defaultChecked={tam?.medida === v} className="peer sr-only" />
+                      <span className="block rounded-xl bg-tarjeta py-2.5 text-center text-[14px] font-semibold ring-1 ring-linea peer-checked:bg-marca peer-checked:text-white peer-checked:ring-marca">{l}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
             <div className="grid grid-cols-[1fr_1.3fr] gap-2">
               <label className="text-sm font-semibold text-suave">Precio
                 <input name="precio" type="number" inputMode="decimal" min="1" step="any" required placeholder="$" className={`${inputCls} num mt-1 text-[18px] font-bold`} />
@@ -376,18 +394,6 @@ export default async function ItemPage({ params, searchParams }: { params: Promi
             </Bloque>
           )}
 
-          <Bloque emoji="🗂️" titulo="Categoría" ayuda={enSuper ? null : "No se compara con los súpers: te muestro lo que pagaste."}>
-            <form action={guardarCategoria} className="flex gap-2">
-              <input type="hidden" name="id" value={id} />
-              <input type="hidden" name="origen" value={origen} />
-              {!esMio && <input type="hidden" name="texto" value={texto} />}
-              <select name="categoria" defaultValue={categoriaElegida ?? ""} className={inputCls}>
-                <option value="">Automática ({categoriaAuto.nombre})</option>
-                {CATEGORIAS.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-              </select>
-              <button className={btnSecCls}>Guardar</button>
-            </form>
-          </Bloque>
 
           {esMio ? (
             <div className="space-y-1 pt-1">

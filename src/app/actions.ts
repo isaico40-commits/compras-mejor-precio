@@ -273,6 +273,16 @@ const MEDIDAS: Record<string, { unidad: string; factor: number }> = {
   u: { unidad: "un", factor: 1 },
 };
 
+/** "Manzanilla 25g" -> 25 gr · "Leche 1 l" -> 1 lt. Null si el nombre no dice el tamaño. */
+function medidaDelNombre(nombre: string | null): { unidad: string; cantidad: number } | null {
+  const m = (nombre ?? "").toLowerCase().match(/(\d+(?:[.,]\d+)?)\s*(kg|kgs|kilos?|g|gr|grs|gramos|ml|cc|l|lt|lts|litros?|u|un|unidades)\b/);
+  if (!m) return null;
+  const n = Number(m[1].replace(",", "."));
+  const u = m[2];
+  const unidad = /^k/.test(u) ? "kg" : /^(g|gr)/.test(u) ? "gr" : /^(ml|cc)$/.test(u) ? "ml" : /^l/.test(u) ? "lt" : "un";
+  return n > 0 ? { unidad, cantidad: n } : null;
+}
+
 /** Lee medida + cantidad del formulario: "medio_kg" + 2 -> 1 kg. */
 function leerMedida(form: FormData) {
   const m = MEDIDAS[String(form.get("medida") ?? "u")] ?? MEDIDAS.u;
@@ -313,15 +323,22 @@ export async function precioDelItem(form: FormData) {
     const { data: p } = await supabase.from("productos").select("nombre").eq("id", productoId).maybeSingle();
     if (p && p.nombre.trim().toLowerCase() !== nombre.toLowerCase()) productoId = null;
   }
+  // Tamaño: el elegido (25 g, 1 l…) o el que viene en el nombre ("Manzanilla 25g")
+  const medida = form.get("medida") ? leerMedida(form) : medidaDelNombre(nombre);
   if (!productoId) {
     if (!nombre) throw new Error("Poné la marca o el nombre del producto");
-    const { data: existente } = await supabase.from("productos").select("id").ilike("nombre", nombre).limit(1).maybeSingle();
-    if (existente) productoId = existente.id as string;
-    else {
-      const { data: nuevo, error } = await supabase.from("productos").insert({ nombre, unidad: "u", cantidad: 1 }).select("id").single();
+    const { data: existente } = await supabase.from("productos").select("id, ean").ilike("nombre", nombre).limit(1).maybeSingle();
+    if (existente) {
+      productoId = existente.id as string;
+      if (!existente.ean && medida) await supabase.from("productos").update(medida).eq("id", productoId);
+    } else {
+      const { data: nuevo, error } = await supabase.from("productos").insert({ nombre, ...(medida ?? { unidad: "un", cantidad: 1 }) }).select("id").single();
       if (error) throw new Error(error.message);
       productoId = nuevo.id as string;
     }
+  } else if (medida) {
+    // Producto cargado a mano (sin código de barras): se le corrige el tamaño
+    await supabase.from("productos").update(medida).eq("id", productoId).is("ean", null);
   }
   const superId = await resolverLugar(supabase, form);
   if (!superId) throw new Error("Elegí o escribí dónde lo comprás");
