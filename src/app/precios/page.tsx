@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { guardarPrecioNuevo, salir, insumoSetto } from "@/app/actions";
+import { guardarPrecioNuevo, salir, insumoSetto, vincularPanel, exportarSetto } from "@/app/actions";
+import { insumosPanel, paqueteDePanel } from "@/lib/setto";
+import { BotonEnviar } from "@/components/BotonEnviar";
 import { pesos, presentacion, filtroBusqueda, porUnidad } from "@/lib/formato";
 import { Encabezado, inputCls, btnCls, btnSecCls } from "@/components/ui";
 import { Icono } from "@/components/IconoProducto";
@@ -12,7 +14,7 @@ type Prod = { id: string; nombre: string; marca: string | null; dim: string | nu
 
 export default async function PreciosPage({
   searchParams,
-}: { searchParams: Promise<{ q?: string; ok?: string; producto?: string; nuevo?: string; s?: string; item?: string; texto?: string; ver?: string; setto?: string }> }) {
+}: { searchParams: Promise<{ q?: string; ok?: string; producto?: string; nuevo?: string; s?: string; item?: string; texto?: string; ver?: string; setto?: string; exp?: string; iguales?: string; sin?: string; medida?: string; err?: string }> }) {
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const supabase = await createClient();
@@ -42,7 +44,22 @@ export default async function PreciosPage({
     !verCargados && !verSetto ? armarLista(supabase).catch(() => null) : Promise.resolve(null),
   ]);
   type Costo = { producto_id: string; nombre: string; precio: number | null; super: string | null; fecha: string | null; dim: string | null; cant_base: number | null; por_unidad: number | null; desde: string };
-  const costos = verSetto ? (((await supabase.rpc("costos_setto")).data as Costo[] | null) ?? []) : [];
+  type Vinc = { producto_id: string; panel_id: string | null; panel_nombre: string | null; exportado_precio: number | null; exportado_fecha: string | null };
+  const [costosRes, vincRes, panel] = verSetto
+    ? await Promise.all([
+        supabase.rpc("costos_setto"),
+        supabase.from("setto_insumos").select("producto_id, panel_id, panel_nombre, exportado_precio, exportado_fecha"),
+        insumosPanel(supabase),
+      ])
+    : [null, null, null];
+  const costos = ((costosRes?.data as Costo[] | null) ?? []);
+  const vinculos = new Map(((vincRes?.data as Vinc[] | null) ?? []).map((v) => [v.producto_id, v]));
+  const usados = new Set([...vinculos.values()].map((v) => v.panel_id).filter(Boolean));
+  const vinculados = costos.filter((c) => vinculos.get(c.producto_id)?.panel_nombre).length;
+  const pendientes = costos.filter((c) => {
+    const v = vinculos.get(c.producto_id);
+    return v?.panel_nombre && c.precio != null && (Number(v.exportado_precio) !== Number(c.precio) || v.exportado_fecha !== c.fecha);
+  }).length;
   const deItem = sp.item || paraSetto ? (
     <>
       {paraSetto && <input type="hidden" name="setto" value="1" />}
@@ -135,37 +152,91 @@ export default async function PreciosPage({
 
         {verSetto && (
           <section>
-            <p className="mb-2 px-1 text-[13px] text-suave">Lo que compra Setto, con su costo actual por kilo, litro o unidad. Tocá uno para cargar un precio nuevo.</p>
+            {sp.exp !== undefined && !sp.err && (
+              <p className="mb-3 rounded-2xl bg-menta px-4 py-3 text-[15px] font-semibold text-menta-tinta">
+                {Number(sp.exp) > 0 ? `✓ ${sp.exp} ${Number(sp.exp) === 1 ? "costo mandado" : "costos mandados"} al panel de Setto.` : "✓ El panel ya tenía todo al día."}
+                {sp.sin && <span className="block text-[13px] font-normal">{sp.sin} sin precio o sin tamaño todavía.</span>}
+              </p>
+            )}
+            {sp.medida && <p className="mb-3 rounded-2xl bg-durazno px-4 py-3 text-[14px] text-durazno-tinta">⚠️ No mandé {sp.medida}: en el panel se mide distinto (g, ml o unidad). Corregí el tamaño acá o vinculalo con otro.</p>}
+            {sp.err && <p className="mb-3 rounded-2xl bg-durazno px-4 py-3 text-[14px] text-durazno-tinta">⚠️ {sp.err}</p>}
+
+            <div className="mb-3 flex items-center gap-3 rounded-3xl bg-tarjeta p-3 shadow-sm ring-1 ring-linea">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-lila text-[22px]">📊</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-semibold">Panel de costos</span>
+                <span className="block text-[13px] text-suave">
+                  {panel ? `${vinculados} de ${costos.length} vinculados${pendientes ? ` · ${pendientes} por mandar` : " · al día"}` : "No pude conectar con el panel"}
+                </span>
+              </span>
+              {panel && vinculados > 0 && (
+                <form action={exportarSetto}>
+                  <BotonEnviar cargando="Mandando…" className={`${btnCls} px-3 py-2 text-[14px]`}>⬆️ Mandar</BotonEnviar>
+                </form>
+              )}
+            </div>
+
+            <p className="mb-2 px-1 text-[13px] text-suave">Cada precio que cargues de un insumo vinculado va solo al panel. Tocá uno para cargar un precio nuevo.</p>
             <ul className={filas}>
-              {costos.map((c) => (
-                <li key={c.producto_id} className="flex items-center">
-                  <Link href={`/precios?producto=${c.producto_id}&setto=1`} className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 active:bg-fondo">
-                    <Icono nombre={c.nombre} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[15px] font-semibold">{c.nombre}</span>
-                      <span className="mt-0.5 flex flex-wrap gap-1">
-                        {c.super && <span className={`${chip} bg-cielo text-cielo-tinta`}>{c.super}</span>}
-                        {c.fecha && <span className={`${chip} bg-fondo text-suave`}>{fecha(c.fecha)}</span>}
-                        {presentacion(c.cant_base, c.dim) && <span className={`${chip} bg-fondo text-suave`}>{presentacion(c.cant_base, c.dim)}</span>}
-                      </span>
-                    </span>
-                    <span className="shrink-0 text-right">
-                      {c.precio != null
-                        ? <><span className="num block text-[16px] font-bold">{pesos(Number(c.precio))}</span>
-                            {c.por_unidad != null && c.dim !== "u" && <span className="num block text-[12px] font-semibold text-marca">{porUnidad(Number(c.por_unidad), c.dim)}</span>}
-                            {c.por_unidad != null && c.dim === "u" && Number(c.cant_base) > 1 && <span className="num block text-[12px] font-semibold text-marca">{pesos(Number(c.por_unidad))} c/u</span>}</>
-                        : <span className={`${chip} bg-marca text-white`}>+ Precio</span>}
-                    </span>
-                  </Link>
-                  {c.desde === "insumo" && (
-                    <form action={insumoSetto} className="pr-2">
-                      <input type="hidden" name="producto_id" value={c.producto_id} />
-                      <input type="hidden" name="quitar" value="1" />
-                      <button aria-label={`Quitar ${c.nombre} de Setto`} className="h-8 w-8 rounded-full text-suave active:bg-fondo">✕</button>
-                    </form>
-                  )}
-                </li>
-              ))}
+              {costos.map((c) => {
+                const v = vinculos.get(c.producto_id);
+                const paq = paqueteDePanel(c.dim, c.cant_base != null ? Number(c.cant_base) : null);
+                const alDia = v?.panel_nombre && c.precio != null && Number(v.exportado_precio) === Number(c.precio) && v.exportado_fecha === c.fecha;
+                const opciones = (panel ?? []).filter((i) => !paq || i.unidad === paq.unidad).filter((i) => i.id === v?.panel_id || !usados.has(i.id));
+                return (
+                  <li key={c.producto_id}>
+                    <div className="flex items-center">
+                      <Link href={`/precios?producto=${c.producto_id}&setto=1`} className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 active:bg-fondo">
+                        <Icono nombre={c.nombre} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[15px] font-semibold">{c.nombre}</span>
+                          <span className="mt-0.5 flex flex-wrap gap-1">
+                            {c.super && <span className={`${chip} bg-cielo text-cielo-tinta`}>{c.super}</span>}
+                            {c.fecha && <span className={`${chip} bg-fondo text-suave`}>{fecha(c.fecha)}</span>}
+                            {presentacion(c.cant_base, c.dim) && <span className={`${chip} bg-fondo text-suave`}>{presentacion(c.cant_base, c.dim)}</span>}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-right">
+                          {c.precio != null
+                            ? <><span className="num block text-[16px] font-bold">{pesos(Number(c.precio))}</span>
+                                {c.por_unidad != null && c.dim !== "u" && <span className="num block text-[12px] font-semibold text-marca">{porUnidad(Number(c.por_unidad), c.dim)}</span>}
+                                {c.por_unidad != null && c.dim === "u" && Number(c.cant_base) > 1 && <span className="num block text-[12px] font-semibold text-marca">{pesos(Number(c.por_unidad))} c/u</span>}</>
+                            : <span className={`${chip} bg-marca text-white`}>+ Precio</span>}
+                        </span>
+                      </Link>
+                      {c.desde === "insumo" && (
+                        <form action={insumoSetto} className="pr-2">
+                          <input type="hidden" name="producto_id" value={c.producto_id} />
+                          <input type="hidden" name="quitar" value="1" />
+                          <button aria-label={`Quitar ${c.nombre} de Setto`} className="h-8 w-8 rounded-full text-suave active:bg-fondo">✕</button>
+                        </form>
+                      )}
+                    </div>
+                    {panel && (
+                      <details className="group px-3 pb-2.5 pl-[68px]">
+                        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[12px] font-semibold">
+                          {v?.panel_nombre
+                            ? <><span className={`${chip} bg-lila text-lila-tinta`}>📊 {v.panel_nombre}</span>
+                                <span className={alDia ? "text-marca" : "text-[#e8833a]"}>{alDia ? "✓ en el panel" : c.precio == null ? "sin precio" : "⏳ por mandar"}</span></>
+                            : <span className="text-suave underline decoration-dotted">📊 Vincular con el panel</span>}
+                        </summary>
+                        <form action={vincularPanel} className="mt-2 grid gap-2">
+                          <input type="hidden" name="producto_id" value={c.producto_id} />
+                          {!paq && <p className="text-[12px] text-suave">Primero poné el tamaño (kg, l o unidades) cargando un precio.</p>}
+                          <select name="panel" defaultValue={v?.panel_id ?? (v?.panel_nombre ? "nuevo" : "")} className={inputCls} required disabled={!paq}>
+                            <option value="" disabled>¿Cuál es en el panel?</option>
+                            {opciones.map((i) => <option key={i.id} value={i.id}>{i.nombre} ({i.unidad})</option>)}
+                            <option value="nuevo">➕ Crear nuevo en el panel</option>
+                            {v?.panel_nombre && <option value="quitar">✕ Desvincular</option>}
+                          </select>
+                          <input name="nombre_panel" placeholder="Nombre si es nuevo (ej. Manteca)" className={inputCls} disabled={!paq} />
+                          <BotonEnviar cargando="Guardando…" className={btnSecCls} disabled={!paq}>Guardar y mandar</BotonEnviar>
+                        </form>
+                      </details>
+                    )}
+                  </li>
+                );
+              })}
               {!costos.length && <li className="px-4 py-8 text-center text-sm text-suave">Todavía no hay insumos. Agregalos abajo.</li>}
             </ul>
             <Link href="/precios?setto=1" className={`${btnCls} mt-3 block text-center`}>+ Agregar insumo de Setto</Link>

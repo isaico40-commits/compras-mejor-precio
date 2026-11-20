@@ -125,3 +125,73 @@ export async function detalleEnSetto(supabase: SupabaseClient, id: string, donde
     return false;
   }
 }
+
+// ── Panel de costos de Setto (autorizado por Isaias el 2026-11-20) ──────────────────────────
+
+export type InsumoPanel = { id: string; nombre: string; tipo: string; unidad: "g" | "ml" | "u" | string };
+
+/** Insumos del panel de costos de Setto (costo_insumos_app). null si no hay integración o falla. */
+export async function insumosPanel(supabase: SupabaseClient): Promise<InsumoPanel[] | null> {
+  try {
+    return await rpcSetto<InsumoPanel[]>(supabase, "costo_insumos_app", {});
+  } catch {
+    return null;
+  }
+}
+
+/** Presentación de la app (kg, l, u) a la del panel (g, ml, u). */
+export function paqueteDePanel(dim: string | null, cant: number | null): { unidad: "g" | "ml" | "u"; paquete: number } | null {
+  if (!cant || cant <= 0) return null;
+  if (dim === "kg") return { unidad: "g", paquete: Math.round(cant * 1000 * 100) / 100 };
+  if (dim === "l") return { unidad: "ml", paquete: Math.round(cant * 1000 * 100) / 100 };
+  if (dim === "u") return { unidad: "u", paquete: cant };
+  return null;
+}
+
+type CostoApp = { producto_id: string; nombre: string; precio: number | null; super: string | null; fecha: string | null; dim: string | null; cant_base: number | null };
+type Vinculo = { producto_id: string; panel_id: string | null; panel_nombre: string | null; exportado_precio: number | null; exportado_fecha: string | null };
+
+export type ResultadoExport = { exportados: number; iguales: number; sinPrecio: number; otraMedida: string[]; error?: string };
+
+/**
+ * Manda al panel de costos el precio actual de cada insumo vinculado (costo_precio_app).
+ * Solo manda lo que cambió desde el último envío. Con `soloProducto`, solo ese.
+ */
+export async function exportarCostos(supabase: SupabaseClient, soloProducto?: string | null, forzar = false): Promise<ResultadoExport> {
+  const r: ResultadoExport = { exportados: 0, iguales: 0, sinPrecio: 0, otraMedida: [] };
+  let q = supabase.from("setto_insumos").select("producto_id, panel_id, panel_nombre, exportado_precio, exportado_fecha").not("panel_nombre", "is", null);
+  if (soloProducto) q = q.eq("producto_id", soloProducto);
+  const { data: vinc } = await q;
+  if (!vinc?.length) return r;
+  const [{ data: costos }, panel] = await Promise.all([supabase.rpc("costos_setto"), insumosPanel(supabase)]);
+  if (!panel) return { ...r, error: "No pude conectar con el panel de Setto" };
+  const porId = new Map(panel.map((p) => [p.id, p]));
+  for (const v of vinc as Vinculo[]) {
+    const c = ((costos ?? []) as CostoApp[]).find((x) => x.producto_id === v.producto_id);
+    const paq = paqueteDePanel(c?.dim ?? null, c?.cant_base != null ? Number(c.cant_base) : null);
+    if (!c || c.precio == null || !paq) { r.sinPrecio++; continue; }
+    const enPanel = v.panel_id ? porId.get(v.panel_id) : null;
+    if (enPanel && enPanel.unidad !== paq.unidad) { r.otraMedida.push(enPanel.nombre); continue; }
+    const precio = Number(c.precio);
+    if (!forzar && enPanel && Number(v.exportado_precio) === precio && v.exportado_fecha === c.fecha) { r.iguales++; continue; }
+    try {
+      const id = await rpcSetto<string>(supabase, "costo_precio_app", {
+        p_insumo: enPanel?.id ?? null,
+        p_nombre: v.panel_nombre,
+        p_unidad: paq.unidad,
+        p_tipo: paq.unidad === "u" ? "packaging" : "materia",
+        p_precio: precio,
+        p_paquete: paq.paquete,
+        p_fecha: c.fecha,
+        p_lugar: [c.super, `(${c.nombre})`].filter(Boolean).join(" ").slice(0, 60),
+      });
+      await supabase.from("setto_insumos").update({
+        panel_id: id ?? v.panel_id, exportado_precio: precio, exportado_fecha: c.fecha, exportado_at: new Date().toISOString(),
+      }).eq("producto_id", v.producto_id);
+      r.exportados++;
+    } catch (e) {
+      r.error = e instanceof Error ? e.message : "Error al exportar";
+    }
+  }
+  return r;
+}
