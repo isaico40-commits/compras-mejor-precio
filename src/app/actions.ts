@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { esRubro, detectarRubro, type Rubro } from "@/lib/rubros";
 import { CATEGORIAS, rubroDeCategoria, categoriaDe } from "@/lib/categorias";
-import { marcarEnSetto, actualizarEnSetto, agregarEnSetto, detalleEnSetto, claveAlias, leerPendientesSetto } from "@/lib/setto";
+import { marcarEnSetto, actualizarEnSetto, agregarEnSetto, detalleEnSetto, claveAlias, leerPendientesSetto, exportarCostos, insumosPanel } from "@/lib/setto";
 import { unirTermino } from "@/lib/formato";
 
 const num = (v: FormDataEntryValue | null) => (v === null || v === "" ? null : Number(v));
@@ -347,6 +347,8 @@ export async function precioDelItem(form: FormData) {
   const { error } = await supabase.from("precios").insert({ producto_id: productoId, supermercado_id: superId, precio });
   if (error) throw new Error(error.message);
   await fijarEnItem(supabase, form, productoId!, superId, precio);
+  // Si es un insumo vinculado al panel de Setto, el costo nuevo viaja solo
+  await exportarCostos(supabase, productoId).catch(() => null);
   revalidatePath("/");
   revalidatePath("/super");
   revalidatePath("/precios");
@@ -389,6 +391,7 @@ export async function guardarPrecioNuevo(form: FormData) {
   // Insumo de Setto: queda en la pestaña Setto con este lugar
   const esSetto = !!form.get("setto");
   if (esSetto) await supabase.from("setto_insumos").upsert({ producto_id: productoId!, lugar_id: superId }, { onConflict: "user_id,producto_id" });
+  await exportarCostos(supabase, productoId).catch(() => null);
   revalidatePath("/precios");
   revalidatePath("/");
   redirect(esSetto ? "/precios?ver=setto&ok=1" : "/precios?ok=1");
@@ -884,4 +887,54 @@ export async function insumoSetto(form: FormData) {
   if (form.get("quitar")) await supabase.from("setto_insumos").delete().eq("producto_id", productoId);
   else await supabase.from("setto_insumos").upsert({ producto_id: productoId }, { onConflict: "user_id,producto_id" });
   revalidatePath("/precios");
+}
+
+/** Nombre sugerido para el panel: sin tamaño ni pack ("Manteca Primer Premio 2,5 kg" -> "Manteca Primer Premio"). */
+function nombrePanel(n: string) {
+  return n.replace(/\b(x\s*)?\d+([.,]\d+)?\s*(kg|kgs|g|gr|grs|ml|cc|l|lt|lts|u|un|unid|unidades)\b\.?/gi, "").replace(/\s+x\s*$/i, "").replace(/\s{2,}/g, " ").trim() || n;
+}
+
+/** Vincula un insumo de la app con uno del panel de costos de Setto (o lo crea allá) y manda su precio. */
+export async function vincularPanel(form: FormData) {
+  const supabase = await createClient();
+  const productoId = txt(form.get("producto_id"));
+  const panel = txt(form.get("panel"));
+  if (!productoId || !panel) return;
+  if (panel === "quitar") {
+    await supabase.from("setto_insumos").update({ panel_id: null, panel_nombre: null, exportado_precio: null, exportado_fecha: null, exportado_at: null }).eq("producto_id", productoId);
+    revalidatePath("/precios");
+    return;
+  }
+  let panelId: string | null = null;
+  let panelNombre: string | null = null;
+  if (panel === "nuevo") {
+    const { data: p } = await supabase.from("productos").select("nombre").eq("id", productoId).maybeSingle();
+    panelNombre = txt(form.get("nombre_panel")) ?? (p ? nombrePanel(p.nombre) : null);
+    if (!panelNombre) throw new Error("Poné cómo se llama en el panel");
+  } else {
+    const lista = await insumosPanel(supabase);
+    const elegido = lista?.find((i) => i.id === panel);
+    if (!elegido) throw new Error("No encontré ese insumo en el panel");
+    panelId = elegido.id;
+    panelNombre = elegido.nombre;
+  }
+  const { data: existe } = await supabase.from("setto_insumos").select("id").eq("producto_id", productoId).maybeSingle();
+  if (existe) {
+    await supabase.from("setto_insumos").update({ panel_id: panelId, panel_nombre: panelNombre, exportado_precio: null, exportado_fecha: null }).eq("producto_id", productoId);
+  } else {
+    // Viene de la caja: se copia el lugar elegido en el alias
+    const { data: a } = await supabase.from("alias_productos").select("lugar_id").eq("producto_id", productoId).not("lugar_id", "is", null).limit(1).maybeSingle();
+    await supabase.from("setto_insumos").insert({ producto_id: productoId, lugar_id: a?.lugar_id ?? null, panel_id: panelId, panel_nombre: panelNombre });
+  }
+  const r = await exportarCostos(supabase, productoId, true);
+  revalidatePath("/precios");
+  redirect(`/precios?ver=setto&exp=${r.exportados}${r.otraMedida.length ? `&medida=${encodeURIComponent(r.otraMedida.join(", "))}` : ""}${r.error ? `&err=${encodeURIComponent(r.error)}` : ""}`);
+}
+
+/** Manda al panel de Setto todos los costos que cambiaron. */
+export async function exportarSetto() {
+  const supabase = await createClient();
+  const r = await exportarCostos(supabase, null, false);
+  revalidatePath("/precios");
+  redirect(`/precios?ver=setto&exp=${r.exportados}&iguales=${r.iguales}${r.sinPrecio ? `&sin=${r.sinPrecio}` : ""}${r.otraMedida.length ? `&medida=${encodeURIComponent(r.otraMedida.join(", "))}` : ""}${r.error ? `&err=${encodeURIComponent(r.error)}` : ""}`);
 }
